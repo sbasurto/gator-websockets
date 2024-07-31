@@ -16,11 +16,9 @@
  */
 package gator.websockets;
 
-import java.io.FileInputStream;
-import java.util.Properties;
-import gator.lib.io.files.GappFiles;
 import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
+import gator.websockets.helpers.GatorWSProperties;
 import gator.websockets.server.GatorWSServer;
 
 /**
@@ -36,25 +34,18 @@ public class GatorWSRunner {
     public static void main(String[] args) {
             GappLogging logger = new GappLogging();
             GappLog gappLog = new GappLog();
-            try {
-                    Properties appProps = new Properties();                    
-                    appProps.load(new FileInputStream(GappFiles.CONF_DIR + "/websocket.properties"));
-                    
-                    int port = Integer.parseInt(appProps.getProperty("port"));
-                    boolean withDebug = Boolean.parseBoolean(appProps.getProperty("withDebug"));
-                    boolean withSSL = Boolean.parseBoolean(appProps.getProperty("withSSL"));
-                    if(withSSL && withDebug) System.setProperty("javax.net.debug", "ssl");
-                    
+            GatorWSProperties gatorProps = new GatorWSProperties();
+            try {                                                                                
                     gappLog.setFileToLog("websocket");
                     gappLog.setName("websockets");
-                    gappLog.addIdentifier("server", "main");
-                    gappLog.addMessage("Puerto(" + port + ")");
-                    gappLog.addMessage("Con ssl(" + withSSL + ")");
-                    gappLog.addMessage("Con debug(" + withDebug + ")");
+                    gappLog.startNewLog("server", "main");
+                    gappLog.addMessage("Puerto(" + gatorProps.getPort() + ")");
+                    gappLog.addMessage("Con ssl(" + gatorProps.withSSL() + ")");
+                    gappLog.addMessage("Con debug(" + gatorProps.withDebug() + ")");
                     
                     logger.logIt(gappLog, true);
                     
-                    GatorWSServer server = new GatorWSServer(port, withDebug, false);
+                    GatorWSServer server = new GatorWSServer(gatorProps);
             }catch(Exception e) {                        
                     System.err.println("The websocket server cannot start");                        
                     e.printStackTrace(System.err);                

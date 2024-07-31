@@ -21,6 +21,7 @@ import gator.lib.io.files.GappFiles;
 import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import gator.websockets.exception.WebSocketSSLExpiredException;
+import gator.websockets.helpers.GatorWSProperties;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -43,49 +44,45 @@ import javax.net.ssl.TrustManagerFactory;
  * @version 1.0
  */
 public class GatorWSServer {
-	private final int port;
 	private SSLServerSocket sslSocketServer;
 	private ServerSocket socketServer;
 	private final GappLogging logger;
 	private final GappLog gappLog;
-	private final boolean withSSL;
-        private final boolean withDebug;
 	private final GappDateFactory gappDateFactory;
+        private final GatorWSProperties gatorProps;
 	
-	public GatorWSServer(int _port, boolean _withDebug, boolean _withSSL) {
+	public GatorWSServer(GatorWSProperties _gatorProps) {
 		logger = new GappLogging();
 		gappLog = new GappLog();
 	    	gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets");
-	    	withSSL = _withSSL;
-                withDebug = _withDebug;
+                gatorProps = new GatorWSProperties();	    	
 	    	gappDateFactory = new GappDateFactory();
-                port = _port;
                 runServer();
 	}    
 	private ServerSocket getSocket() {
-	    	gappLog.addIdentifier("GatorWSServer", "getSocket");
+	    	gappLog.startNewLog("GatorWSServer", "getSocket");
                 try {
-		    	if(withSSL) {
+		    	if(gatorProps.withSSL()) {
 		        	if(sslSocketServer == null) {
-		            		sslSocketServer = getSSLSocket(port);
-                                        gappLog.addMessage("Listening in port " + port + " with SSL");
+		            		sslSocketServer = getSSLSocket(gatorProps.getPort());
+                                        gappLog.addMessage("Listening in port " + gatorProps.getPort() + " with SSL");
 		        	}
 	                        
-	                        logger.logIt(gappLog, withDebug);
+	                        logger.logIt(gappLog, gatorProps.withDebug());
 		        	return sslSocketServer;
 		    	} else {
 		        	if(socketServer == null) {
-					socketServer = new ServerSocket(port);
-                                        gappLog.addMessage("Listening in port " + port);
+					socketServer = new ServerSocket(gatorProps.getPort());
+                                        gappLog.addMessage("Listening in port " + gatorProps.getPort());
 		        	}	                        
-	                        logger.logIt(gappLog, withDebug);
+	                        logger.logIt(gappLog, gatorProps.withDebug());
 		        	return socketServer;
 		    	}
                 } catch(Exception e) {
 	                gappLog.addMessage("The following error occurs:");                        
 			gappLog.addMessage(logger.getStackTraceString(e), 2);
-			logger.logIt(gappLog, withDebug);
+			logger.logIt(gappLog, gatorProps.withDebug());
 			return null;
 		}
 	}
@@ -103,7 +100,7 @@ public class GatorWSServer {
                         String alias = appProps.getProperty("alias");
                         SSLServerSocket sslSocket;
                         
-                        gappLog.addIdentifier("GatorWSServer", "getSSLSocket");
+                        gappLog.startNewLog("GatorWSServer", "getSSLSocket");
                         KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());                                        
                         InputStream tstore = new FileInputStream(new File(GappFiles.CONF_DIR + "/" + trustStoreFile));                        
                         trustStore.load(tstore, passphrase.toCharArray());                        
@@ -145,7 +142,7 @@ public class GatorWSServer {
                 } catch(Exception e) {
                         gappLog.addMessage("The following error occurs:");
                         gappLog.addMessage(logger.getStackTraceString(e), 2);
-			logger.logIt(gappLog, withDebug);
+			logger.logIt(gappLog, gatorProps.withDebug());
                         return null;
                 }
         }
@@ -154,14 +151,14 @@ public class GatorWSServer {
 		try {
  			while(true) {
                                 Socket socket = getSocket().accept();
-                                GatorWSThread wsThread = new GatorWSThread(socket, threadList);
+                                GatorWSThread wsThread = new GatorWSThread(socket, threadList, gatorProps);
                                 threadList.add(wsThread);
                                 wsThread.start();
 			}
                 } catch(Exception e) {
                         gappLog.addMessage("The following error occurs:");
                         gappLog.addMessage(logger.getStackTraceString(e), 2);
-			logger.logIt(gappLog, withDebug);
+			logger.logIt(gappLog, gatorProps.withDebug());
                 }
         }
 }

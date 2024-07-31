@@ -70,4 +70,18 @@
     nbproject/build-impl.xml file. 
 
     -->
+	<target name="-post-jar">
+                <jar update="true" destfile="${dist.jar}">
+                        <zipfileset src="/opt/external3/lib/gator-lib.jar" />
+                </jar>
+                <jar update="true" destfile="${dist.jar}">
+                        <zipfileset src="/opt/external3/lib/gator-lib-utils.jar" />
+                </jar>
+                <jar update="true" destfile="${dist.jar}">
+                        <zipfileset src="/opt/external3/lib/gson.jar" />
+                </jar>
+                <jar update="true" destfile="${dist.jar}">
+                        <zipfileset src="/opt/external3/lib/postgresql-42.7.3.jar" />
+                </jar>
+	</target>
 </project>
