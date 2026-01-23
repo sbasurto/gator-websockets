@@ -87,7 +87,7 @@ public class GatorWSMessage {
          * A key value pairs for additional data that must be included
          * with message.
          */
-        private final HashMap<String, String> data = new HashMap<>();
+        private HashMap<String, String> data = new HashMap<>();
         
         
         /**
@@ -188,7 +188,13 @@ public class GatorWSMessage {
         public void addData(String key, String value) {
                 data.put(key, value);
         }
-        
+        /**
+         * Allows to set data at once.
+         * @param data The data to be set.         
+         */
+        public void setData(HashMap<String, String> data) {
+                this.data = data;
+        }
         /**
          * Allows to set the message.
          * @param _message The message string. 

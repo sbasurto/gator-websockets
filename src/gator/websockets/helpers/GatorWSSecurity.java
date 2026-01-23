@@ -61,7 +61,7 @@ public class GatorWSSecurity {
         /**
          * Allows to retrieve the private key for specific client.
          * 
-         * @return The public key for this client.
+         * @return The private key for this client.
          */
         private String getPrivateKey() {
                 Gson gson = new Gson();
@@ -71,8 +71,8 @@ public class GatorWSSecurity {
                 GappSQLStatement gappSQLStmt = new GappSQLStatement();
                 gappSQLStmt.setStoreProcedure("app_fn_get_private_key");
                 gappSQLStmt.addParam(gson.toJson(jsonObj));
-                String pubKey = helper.executeStore(gappSQLStmt);
-                return pubKey;
+                String privateKey = helper.executeStore(gappSQLStmt);
+                return privateKey;
         }
         /**
          * Allows to retrieve the public key for specific client.

@@ -106,6 +106,7 @@ public class GatorWSServer {
                         trustStore.load(tstore, passphrase.toCharArray());                        
                         tstore.close();                        
                         gappLog.addMessage("Trust Store Loded");
+                        gappLog.addMessage("Directory: " + GappFiles.CONF_DIR + "/" + trustStoreFile);
                         
                         TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
                         tmf.init(trustStore);

@@ -108,6 +108,9 @@ public class GatorWSMessageHandler {
                                     createEnvelopeToAll(wsMsg);
                                 }
                         }
+                        if(wsMsg.getType().equals("event")) {                                                                
+                                createEventToAll(wsMsg);
+                        }
                 }
         }
         /**
@@ -343,6 +346,24 @@ public class GatorWSMessageHandler {
                 responseMsg.notToAll();                        
                 responseMsg.itHasNotReceiver();                        
                 responseMsgs.add(responseMsg);
+                hasResponse = true;
+        }
+        /**
+         * Allows to send event to all users connected.
+         * 
+         * @param wsMsg
+         */
+        public void createEventToAll(GatorWSMessage wsMsg) {                
+                GatorWSMessage responseMsg = new GatorWSMessage();
+                GatorWSUsuario usuario = new GatorWSUsuario();
+                usuario.setId(gatorSecurity.getAuthResponse().getUsuario().getId());
+                usuario.setNombre(gatorSecurity.getAuthResponse().getUsuario().getNombre());
+                responseMsg.setType("event");
+                responseMsg.setMessage(wsMsg.getMessage());
+                responseMsg.setData(wsMsg.getData());
+                responseMsg.addUsuario(usuario);
+                responseMsg.toAll();
+                responseMsgs.add(responseMsg);                
                 hasResponse = true;
         }
 }
