@@ -22,15 +22,10 @@ repositories {
     mavenCentral()
 }
 
-def externalLibDir = findProperty('externalLibDir') ?: '/opt/external3/lib'
-
 dependencies {
-    implementation files(
-        "$externalLibDir/gator-lib.jar",
-        "$externalLibDir/gator-lib-utils.jar"
-    )
+    implementation 'gator.lib:gator-lib:1.0.0-SNAPSHOT'
+    implementation 'gator.lib:gator-lib-utils:1.0.0-SNAPSHOT'
     implementation 'com.google.code.gson:gson:2.11.0'
-    implementation 'org.postgresql:postgresql:42.7.3'
 }
 
 tasks.register('selfCheck', JavaExec) {

@@ -2,7 +2,7 @@
 
 Servidor WebSocket ligero escrito en Java 21. Implementa directamente el handshake y los frames definidos por RFC 6455, autenticación respaldada por PostgreSQL, mensajería directa y difusión de eventos.
 
-> El proyecto está en preparación para publicarse como software libre. Actualmente aún depende de dos librerías internas y de procedimientos almacenados que no forman parte de este repositorio.
+El servidor forma parte del ecosistema open source Gator y se construye junto con `gator-lib` y `gator-lib-utils`.
 
 ## Características
 
@@ -19,12 +19,14 @@ Servidor WebSocket ligero escrito en Java 21. Implementa directamente el handsha
 - JDK 21.
 - Acceso a Maven Central durante la primera compilación.
 - PostgreSQL y la configuración de base de datos esperada por `gator-lib`.
-- Los siguientes archivos internos:
+- Los repositorios `gator-lib` y `gator-lib-utils` en directorios hermanos:
 
-  - `gator-lib.jar`
-  - `gator-lib-utils.jar`
-
-Por defecto se buscan en `/opt/external3/lib`. Se puede indicar otra ubicación con la propiedad Gradle `externalLibDir`.
+  ```text
+  javaProjects/
+  ├── gator-lib-utils/
+  ├── gator-lib/
+  └── gator-websockets/
+  ```
 
 ## Compilación
 
@@ -32,10 +34,10 @@ Por defecto se buscan en `/opt/external3/lib`. Se puede indicar otra ubicación 
 ./gradlew clean build
 ```
 
-Con las librerías internas en otro directorio:
+Con `gator-lib` en otro directorio:
 
 ```bash
-./gradlew clean build -PexternalLibDir=/ruta/a/lib
+./gradlew clean build -PgatorLibDir=/ruta/gator-lib
 ```
 
 El build ejecuta un self-check del framing WebSocket y genera:
@@ -46,7 +48,7 @@ dist/gator-websockets.jar
 
 ## Configuración
 
-El servidor lee `websocket.properties` desde el directorio definido por `GappFiles.CONF_DIR`, perteneciente a `gator-lib`.
+El servidor lee `websocket.properties` desde el directorio definido por `GappFiles.CONF_DIR`, perteneciente a `gator-lib-utils`.
 
 Configuración mínima:
 
@@ -138,13 +140,11 @@ src/gator/websockets/
 - El handshake está limitado a 16 KiB y vence después de 30 segundos.
 - Este proyecto todavía no ha recibido una auditoría de seguridad independiente.
 
-## Pendiente para publicación open source
+## Limitaciones conocidas
 
-- Publicar o reemplazar `gator-lib` y `gator-lib-utils`.
 - Incluir el esquema y los procedimientos de PostgreSQL.
 - Agregar configuraciones de ejemplo independientes de infraestructura privada.
-- Incorporar el archivo `LICENSE` completo.
-- Añadir integración continua y pruebas de interoperabilidad con clientes WebSocket.
+- Añadir pruebas de interoperabilidad con clientes WebSocket.
 - Definir una política configurable de orígenes permitidos.
 
 ## Contribuciones
@@ -159,4 +159,4 @@ Mantén los cambios pequeños, incluye una verificación ejecutable para lógica
 
 ## Licencia
 
-Los encabezados del código fuente declaran GNU General Public License, versión 3 o posterior. El archivo de licencia completo se añadirá antes de la publicación pública.
+El proyecto se distribuye bajo GNU General Public License, versión 3 o posterior. Consulta `LICENSE` y `NOTICE`.

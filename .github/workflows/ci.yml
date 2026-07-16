@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gator-websockets
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/gator-lib
+          path: gator-lib
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/gator-lib-utils
+          path: gator-lib-utils
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gator-websockets/gradlew -p gator-websockets clean build

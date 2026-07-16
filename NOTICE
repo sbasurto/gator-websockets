@@ -1,0 +1,5 @@
+Gator WebSockets
+Copyright (C) 2018-2026 Sergio Basurto Juárez
+
+This project depends on gator-lib and gator-lib-utils. Those projects preserve
+their own third-party attribution and license notices.
