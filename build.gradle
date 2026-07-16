@@ -1,0 +1,42 @@
+plugins {
+    id 'application'
+}
+
+group = 'gator.websockets'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+sourceSets.main.java.srcDir 'src'
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+dependencies {
+    implementation files(
+        '/opt/external3/lib/gator-lib.jar',
+        '/opt/external3/lib/gator-lib-utils.jar',
+        '/opt/external3/lib/gson.jar',
+        '/opt/external3/lib/postgresql-42.7.3.jar'
+    )
+}
+
+application {
+    mainClass = 'gator.websockets.GatorWSRunner'
+}
+
+tasks.named('jar') {
+    archiveFileName = 'gator-websockets.jar'
+    destinationDirectory = file('dist')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest.attributes 'Main-Class': application.mainClass.get()
+    from {
+        configurations.runtimeClasspath.collect { it.directory ? it : zipTree(it) }
+    }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+}
