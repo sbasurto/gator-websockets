@@ -12,18 +12,40 @@ java {
 }
 
 sourceSets.main.java.srcDir 'src'
+sourceSets.test.java.srcDir 'test'
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+repositories {
+    mavenCentral()
+}
+
+def externalLibDir = findProperty('externalLibDir') ?: '/opt/external3/lib'
+
 dependencies {
     implementation files(
-        '/opt/external3/lib/gator-lib.jar',
-        '/opt/external3/lib/gator-lib-utils.jar',
-        '/opt/external3/lib/gson.jar',
-        '/opt/external3/lib/postgresql-42.7.3.jar'
+        "$externalLibDir/gator-lib.jar",
+        "$externalLibDir/gator-lib-utils.jar"
     )
+    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.postgresql:postgresql:42.7.3'
+}
+
+tasks.register('selfCheck', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'gator.websockets.frames.GatorWSOutputFrameSelfCheck'
+    jvmArgs '-ea'
+}
+
+tasks.named('test') {
+    enabled = false
+}
+
+tasks.named('check') {
+    dependsOn selfCheck
 }
 
 application {

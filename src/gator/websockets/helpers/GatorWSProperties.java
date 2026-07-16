@@ -55,6 +55,14 @@ public class GatorWSProperties {
                 dbConfigurationFile = appProps.getProperty("gappConfigFile");
                 if(ssl && debug) System.setProperty("javax.net.debug", "ssl");
         }
+        public GatorWSProperties(GatorWSProperties source) {
+                logger = new GappLogging();
+                gappLog = new GappLog();
+                port = source.port;
+                debug = source.debug;
+                ssl = source.ssl;
+                dbConfigurationFile = source.dbConfigurationFile;
+        }
         public int getPort() {
                 return port;
         }

@@ -16,7 +16,7 @@
  */
 package gator.websockets.frames;
 
-import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 
 /**
@@ -80,23 +80,11 @@ public class GatorWSOutputFrame  extends GatorWSFrame {
                 if(messageLength > 125 && messageLength <= 65535) {                        
                         frame[1] = getByteUnsigned(withMask + 126);
                         
-                        byte []realLength = BigInteger.valueOf(messageLength).toByteArray();
-                        if(realLength.length < 2) {
-                                byte [] missingByte = new byte[1];
-                                missingByte[0] = getByteUnsigned(0);
-                                realLength = concatByteArray(missingByte, realLength);
-                        }
-                        frame = concatByteArray(frame, realLength);
+                        frame = concatByteArray(frame, ByteBuffer.allocate(2).putShort((short) messageLength).array());
                 }
                 if(messageLength > 65535) {
                         frame[1] = getByteUnsigned(withMask + 127);
-                        byte []realLength = BigInteger.valueOf(messageLength).toByteArray();
-                        if(realLength.length < 4) {
-                                byte [] missingByte = new byte[1];
-                                missingByte[0] = getByteUnsigned(0);
-                                realLength = concatByteArray(missingByte, realLength);
-                        }
-                        frame = concatByteArray(frame, realLength);
+                        frame = concatByteArray(frame, ByteBuffer.allocate(8).putLong(messageLength).array());
                 }
                 if(isMasked) {
                         for(int i = 0; i < mask.length; i++) {

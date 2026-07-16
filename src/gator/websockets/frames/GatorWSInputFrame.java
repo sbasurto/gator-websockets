@@ -203,12 +203,18 @@ public class GatorWSInputFrame extends GatorWSFrame {
         public void setFirstByte(byte firstByte)  throws WebSocketFormatException {
                 gappLog.startNewLog("GatorWSInputFrame", "setFirstByte");
                 int fin = firstByte & 0x80;
-                int kind = firstByte & 0x7f;                     
+                int kind = firstByte & 0x0f;
                 isFIN = fin == 128;
                 gappLog.addMessage("FIN:" + isFIN, 2);
                 gappLog.addMessage("Opcode:" + kind, 2);
                 logger.logIt(gappLog, gatorProps.withDebug());
                 
+                if((firstByte & 0x70) != 0) {
+                        throw new WebSocketFormatException("RSV bits require a negotiated extension");
+                }
+                if(kind >= 8 && !isFIN) {
+                        throw new WebSocketFormatException("Control frames cannot be fragmented");
+                }
                 if(isFIN && kind != 0) isFragmented = false;
                 if(!isFIN && kind != 0) {
                         messageBegins = true;
@@ -281,6 +287,12 @@ public class GatorWSInputFrame extends GatorWSFrame {
                         throw new WebSocketFormatException("Frame sent from a client must has a mask, this hasn't (masked bit comes as 0)");
                 }
                 int valor = secondByte & 0x7f;
+                if((isCloseFrame || isPing || isPong) && valor > 125) {
+                        throw new WebSocketFormatException("Control frame payload cannot exceed 125 bytes");
+                }
+                if(isCloseFrame && valor == 1) {
+                        throw new WebSocketFormatException("Close frame payload cannot contain only one byte");
+                }
                 if (valor >= 0 && valor <= 125) {
                     payloadLength = valor;
                     lengthSettled = true;
@@ -337,24 +349,20 @@ public class GatorWSInputFrame extends GatorWSFrame {
                         long temporalLengthLong = 0;
                         if (frameLength.length == 2) {
                                 DataInputStream reader = new DataInputStream(new ByteArrayInputStream(frameLength));
-                                temporalLength = reader.readShort();
+                                temporalLength = reader.readUnsignedShort();
                         }
                         if (frameLength.length == 8) {
                                 DataInputStream reader = new DataInputStream(new ByteArrayInputStream(frameLength));
                                 temporalLengthLong = reader.readLong();
-                                // We will accept only 134217700 bits = 16 Mebibytes for a frame size, 
-                                // you can increase this value to 2147483647 bits = 2GiB just remember to 
-                                // also allow this size on heap memory.                                
-                                byte []maxValue = {(byte) 0x07, (byte) 0xff, (byte) 0xff, (byte) 0xe4};
-                                DataInputStream readerMax = new DataInputStream(new ByteArrayInputStream(maxValue));
-                                temporalLength = readerMax.readInt();
+                                int maxLength = 16 * 1024 * 1024;
                                 gappLog.clearMessages();
                                 gappLog.addMessage("Requested frame length: " + temporalLengthLong, 2);
-                                gappLog.addMessage("Allowed frame max length: " + temporalLength, 2);
+                                gappLog.addMessage("Allowed frame max length: " + maxLength, 2);
                                 logger.logIt(gappLog, gatorProps.withDebug());
-                        }
-                        if(temporalLengthLong > 0 && temporalLengthLong > temporalLength) {        
-                                throw new WebSocketMaxLengthException("The length of the payload data is (" + temporalLengthLong + ") this exceeds the allowed length for this server that is 16MiB in size.");
+                                if(temporalLengthLong < 0 || temporalLengthLong > maxLength) {
+                                        throw new WebSocketMaxLengthException("The payload length (" + temporalLengthLong + ") exceeds the 16 MiB limit.");
+                                }
+                                temporalLength = (int) temporalLengthLong;
                         }
                         payloadLength = temporalLength;
                         gappLog.clearMessages();                                
@@ -513,7 +521,7 @@ public class GatorWSInputFrame extends GatorWSFrame {
                 }
                 if(!isMaskSettled()) {
                         setMask(readByte);
-                        return false;
+                        return isFull() && !isThisTheCloseFrame();
                 }
                 if(isThisTheCloseFrame()) {
                         if(isClosureReady()) {

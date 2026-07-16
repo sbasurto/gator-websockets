@@ -174,8 +174,6 @@ public class GatorWSSecurity {
         public String decryptAES(String toDecrypt, String iv) {
                 gappLog.startNewLog("GatorWSSecurity", "decryptAES");                                                     
                 GappCrypt gappCrypt = new GappCrypt("default");
-                gappLog.addMessage("AES Key: " + getAESKey(), 2);                                    
-                logger.logIt(gappLog, gatorProps.withDebug());
                 gappCrypt.setAESKey(this.getAESKey());                    
                 return gappCrypt.decryptStringAES(toDecrypt, this.getAESKey(), iv);
         }
@@ -186,6 +184,10 @@ public class GatorWSSecurity {
          */
         public boolean authenticate(GatorWSMessage wsMsg) {
                 gappLog.startNewLog("GatorWSSecurity", "authenticate");
+                if(wsMsg.getMessage() == null || wsMsg.getData() == null
+                        || wsMsg.getData().get("usuario") == null || wsMsg.getData().get("key") == null) {
+                        return false;
+                }
                 Gson gson = new Gson();
                 JsonObject jsonObj = new JsonObject();
                 GappDBHelper helper = new GappDBHelper(gatorProps.getConfigFile());
@@ -193,14 +195,12 @@ public class GatorWSSecurity {
                 jsonObj.addProperty("id", gatorProps.getId());
                 jsonObj.addProperty("ipAddr", gatorProps.getInetAddress());
                 jsonObj.addProperty("usuario", decrypt(wsMsg.getData().get("usuario")));
-                jsonObj.addProperty("passphrase", decrypt(wsMsg.getMessage())); 
-                gappLog.addMessage("Message add to this request:" + decrypt(wsMsg.getMessage()), 2);                                    
-                logger.logIt(gappLog, gatorProps.withDebug());                
+                jsonObj.addProperty("passphrase", decrypt(wsMsg.getMessage()));
                 gappSQLStmt.setStoreProcedure("app_fn_authenticate_ws");
                 gappSQLStmt.addParam(gson.toJson(jsonObj));
                 String json = helper.executeStore(gappSQLStmt);
                 authResp = gson.fromJson(json, GatorWSAuthResponse.class);
-                if(authResp.wasSuccessful()) {
+                if(authResp != null && authResp.wasSuccessful()) {
                         setUserId(authResp.getUsuario().getId());
                         setName(getAuthResponse().getUsuario().getNombre());
                         setMyPublicKey(wsMsg.getData().get("key"));
@@ -209,7 +209,7 @@ public class GatorWSSecurity {
                         gappLog.addMessage("Ids: (ori) - " + gatorProps.getId() + ", (new) - " + authResp.getUsuario().getNombre(), 2);                                    
                         logger.logIt(gappLog, gatorProps.withDebug());
                 }
-                return authResp.wasSuccessful();
+                return authResp != null && authResp.wasSuccessful();
         }
         public GatorWSAuthResponse getAuthResponse() {
                 return this.authResp;

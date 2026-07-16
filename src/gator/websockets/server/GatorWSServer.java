@@ -30,8 +30,8 @@ import java.net.Socket;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocket;
@@ -56,7 +56,7 @@ public class GatorWSServer {
 		gappLog = new GappLog();
 	    	gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets");
-                gatorProps = new GatorWSProperties();	    	
+                gatorProps = _gatorProps;
 	    	gappDateFactory = new GappDateFactory();
                 runServer();
 	}    
@@ -134,11 +134,9 @@ public class GatorWSServer {
                         
                         sslSocket = (SSLServerSocket) factory.createServerSocket(port);
 
-                        String []protos = sslSocket.getSupportedProtocols();
-                        for(String proto: protos) {
+                        for(String proto: sslSocket.getEnabledProtocols()) {
                                 gappLog.addMessage("Supported protocol: " + proto);
                         }
-                        sslSocket.setEnabledProtocols(protos);
                         return sslSocket;
                 } catch(Exception e) {
                         gappLog.addMessage("The following error occurs:");
@@ -148,7 +146,8 @@ public class GatorWSServer {
                 }
         }
         private void runServer() {
-                ArrayList<GatorWSThread> threadList = new ArrayList<>();
+                // ponytail: copy-on-write favors modest connection churn; use a keyed concurrent registry if profiling says otherwise.
+                CopyOnWriteArrayList<GatorWSThread> threadList = new CopyOnWriteArrayList<>();
 		try {
  			while(true) {
                                 Socket socket = getSocket().accept();

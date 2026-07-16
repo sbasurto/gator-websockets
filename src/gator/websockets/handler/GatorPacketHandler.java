@@ -25,7 +25,8 @@ import gator.websockets.frames.GatorWSInputFrame;
 import gator.websockets.frames.GatorWSOutputFrame;
 import gator.websockets.helpers.GatorWSProperties;
 import java.io.IOException;
-import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Stack;
 
@@ -99,6 +100,7 @@ public class GatorPacketHandler extends GatorWSFrame {
          */
         private final Stack<Integer> dataLengths = new Stack<>();
         private final GatorWSProperties gatorProps;
+        private int protocolErrorCode = 0;
        
         /**
          * Default constructor for this class.
@@ -132,8 +134,8 @@ public class GatorPacketHandler extends GatorWSFrame {
                                                     int longitudTmp = dataLengths.pop();
                                                     dataStack.push(framesStack.peek().concatByteArray(temporal, framesStack.peek().getData()));
                                                     longitudTmp += framesStack.peek().getDataLength();
-                                                    if(longitudTmp > 2147483647) {
-                                                            throw new WebSocketMaxLengthException("The length for this message is (" + longitudTmp + ") this exceeds the allowed length for this server that is 2GiB in size.");
+                                                    if(longitudTmp > 16 * 1024 * 1024) {
+                                                            throw new WebSocketMaxLengthException("The message exceeds the 16 MiB limit.");
                                                     }
                                                     dataLengths.push(longitudTmp);
                                             }
@@ -149,20 +151,20 @@ public class GatorPacketHandler extends GatorWSFrame {
                             gappLog.addMessage("The message is malformed, so server will close this connection.", 2);
                             gappLog.addMessage(logger.getStackTraceString(ex), 2);
                             logger.logIt(gappLog, gatorProps.withDebug());
-                            closeWebSocket(ex.getStatusCode());                                
-                            return true;
+                            protocolErrorCode = ex.getStatusCode();
+                            return false;
                     } catch (WebSocketMaxLengthException ex) {
                             gappLog.addMessage("The message has a bigger length than the accepted one.", 2);
                             gappLog.addMessage(logger.getStackTraceString(ex), 2);
                             logger.logIt(gappLog, gatorProps.withDebug());
-                            closeWebSocket(ex.getStatusCode());                                
-                            return true;
+                            protocolErrorCode = ex.getStatusCode();
+                            return false;
                     } catch (IOException ex) {
                             gappLog.addMessage("Error reading the lenght of the ws frame.", 2);
                             gappLog.addMessage(logger.getStackTraceString(ex), 2);
                             logger.logIt(gappLog, gatorProps.withDebug());
-                            closeWebSocket(1002);    
-                            return true;
+                            protocolErrorCode = 1002;
+                            return false;
                     }
                 } else {
                         lastFrame = framesStack.pop();
@@ -203,6 +205,9 @@ public class GatorPacketHandler extends GatorWSFrame {
         public int getStatusCode() {
                 return framesStack.peek().getStatusCode();
         }
+        public int getProtocolErrorCode() {
+                return protocolErrorCode;
+        }
         
         /**
          * Tells if the current frame is the closure one.
@@ -230,7 +235,7 @@ public class GatorPacketHandler extends GatorWSFrame {
          */
         public byte[] createMessage(String message, int type) {
                 outFrame = new GatorWSOutputFrame(type);
-                return outFrame.addData(message.getBytes());
+                return outFrame.addData(message.getBytes(StandardCharsets.UTF_8));
         }
         
         /**
@@ -252,7 +257,7 @@ public class GatorPacketHandler extends GatorWSFrame {
          */
         public byte[] closeWebSocket(int closureCode) {
                 outFrame = new GatorWSOutputFrame(GatorWSOutputFrame.CLOSE_FRAME);
-                return outFrame.addData(BigInteger.valueOf(closureCode).toByteArray());
+                return outFrame.addData(ByteBuffer.allocate(2).putShort((short) closureCode).array());
         }
         /**
          * Allow to create a frame for a message to send.
@@ -262,7 +267,7 @@ public class GatorPacketHandler extends GatorWSFrame {
          */
         public byte[] ping(String message) {
                 outFrame = new GatorWSOutputFrame(GatorWSOutputFrame.PING);
-                return outFrame.addData(message.getBytes());
+                return outFrame.addData(message.getBytes(StandardCharsets.UTF_8));
         }
         /**
          * Allow to create a frame for a message to send.
@@ -272,7 +277,7 @@ public class GatorPacketHandler extends GatorWSFrame {
          */
         public byte[] pong(String message) {
                 outFrame = new GatorWSOutputFrame(GatorWSOutputFrame.PONG);
-                return outFrame.addData(message.getBytes());
+                return outFrame.addData(message.getBytes(StandardCharsets.UTF_8));
         }                
         
         /**

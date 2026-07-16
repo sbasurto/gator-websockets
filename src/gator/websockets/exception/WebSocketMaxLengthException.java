@@ -25,7 +25,7 @@ public class WebSocketMaxLengthException extends Exception {
             private final int statusCode;
             public WebSocketMaxLengthException(String message) {
                     super(message);
-                    statusCode = 1002;
+                    statusCode = 1009;
             }
             public int getStatusCode() {
                     return statusCode;

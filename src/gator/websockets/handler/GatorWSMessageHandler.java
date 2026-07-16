@@ -66,25 +66,34 @@ public class GatorWSMessageHandler {
          */
         public void processMessage(String message, boolean isAuth) {                
                 gappLog.startNewLog("GatorWSMessageHandler", "processMessage");                                     
-                gappLog.addMessage("Processing message: " + message, 2);                                    
-                logger.logIt(gappLog, gatorProps.withDebug());
                 hasResponse = false;
                 Gson gson = new Gson();
                 if(!this.isJson(message)) {
                     String []els = message.split("::@@::");
-                    /*gappLog.clearMessages();
-                    gappLog.addMessage("crypted message: " + els[0], 2);*/
-                    if(els.length >= 2) {
-                        gappLog.addMessage("IV: " + gatorSecurity.decrypt(els[1]), 2);
-                        gatorSecurity.setIV(gatorSecurity.decrypt(els[1]));
+                    if(els.length != 2 || els[0].isEmpty() || els[1].isEmpty()) {
+                        setForceClosure(new GatorWSMessage(), "Malformed encrypted message");
+                        return;
                     }
-                    message = gatorSecurity.decryptAES(els[0], gatorSecurity.decrypt(els[1]));
-                    //logger.logIt(gappLog, gatorProps.withDebug());
-                }     
-                gappLog.startNewLog("GatorWSMessageHandler", "processMessage"); 
-                gappLog.addMessage("Mensaje descifrado: " + message, 2);                                    
-                logger.logIt(gappLog, gatorProps.withDebug());
-                GatorWSMessage wsMsg = gson.fromJson(message, GatorWSMessage.class);
+                    try {
+                        String iv = gatorSecurity.decrypt(els[1]);
+                        gatorSecurity.setIV(iv);
+                        message = gatorSecurity.decryptAES(els[0], iv);
+                    } catch(Exception e) {
+                        setForceClosure(new GatorWSMessage(), "Cannot decrypt message");
+                        return;
+                    }
+                }
+                GatorWSMessage wsMsg;
+                try {
+                        wsMsg = gson.fromJson(message, GatorWSMessage.class);
+                } catch(Exception e) {
+                        setForceClosure(new GatorWSMessage(), "Malformed JSON message");
+                        return;
+                }
+                if(wsMsg == null || wsMsg.getType() == null) {
+                        setForceClosure(new GatorWSMessage(), "Message type is required");
+                        return;
+                }
                 if(!isAuth) {
                     switch (wsMsg.getType()) {
                         case "askkey" -> setAskAuth(isAuth);
@@ -123,9 +132,6 @@ public class GatorWSMessageHandler {
                 try {
                         JsonParser.parseString(json);
                 } catch(Exception e) {                        
-                        gappLog.addMessage("Not a json" + json, 2);                        
-                        //gappLog.addMessage(logger.getStackTraceString(e), 2); 
-                        logger.logIt(gappLog, gatorProps.withDebug());                                           
                         return false;
                 }
                 return true;
@@ -216,8 +222,6 @@ public class GatorWSMessageHandler {
                 GatorWSMessage responseMsg = new GatorWSMessage();
                 responseMsg.setType("keytouse");
                 responseMsg.setStatus("success", "");                        
-                gappLog.addMessage("Current AES key: " + gatorSecurity.getAESKey(), 2);                                    
-                logger.logIt(gappLog, gatorProps.withDebug());
                 responseMsg.setKeyToUse(gatorSecurity.encrypt(gatorSecurity.getAESKey()));
                 responseMsgs.add(responseMsg);
                 hasResponse = true;                               

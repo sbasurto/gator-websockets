@@ -19,9 +19,11 @@ package gator.websockets.handler;
 import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,9 +36,7 @@ public class GatorWSHandShakeHandler {
         private final String header = "HTTP/1.1 101 Switching Protocols";
         private String reqHeader = "";        
         private String secWebSocketAccept = "";        
-        private String protocol = "";
-        private String magicString = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-        private final HashMap<String, String> headerData = new HashMap<>();
+        private final Map<String, String> headerData = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         private final GappLogging logger;
 	private final GappLog gappLog;
         
@@ -72,7 +72,6 @@ public class GatorWSHandShakeHandler {
                 gappLog.startNewLog("GatorWSHandShakeHandler", "procesaSaludo");  
                 
                 for(String linea: buffer) {
-                    gappLog.addMessage(linea, 2);                    
                     if(linea.matches("GET [/]+ HTTP/1.1")) {
                         setHeader(linea);
                     } else {
@@ -87,9 +86,25 @@ public class GatorWSHandShakeHandler {
                 return isValid();
         }
         public boolean isValid() {
-            boolean isValid;               
-            isValid = getHeader().equals("GET / HTTP/1.1");            
-            return isValid;
+            return getHeader().equals("GET / HTTP/1.1")
+                    && "websocket".equalsIgnoreCase(headerData.get("Upgrade"))
+                    && containsToken(headerData.get("Connection"), "Upgrade")
+                    && "13".equals(headerData.get("Sec-WebSocket-Version"))
+                    && isValidKey(headerData.get("Sec-WebSocket-Key"));
+        }
+        private boolean containsToken(String header, String token) {
+                if(header == null) return false;
+                for(String value: header.split(",")) {
+                        if(value.trim().equalsIgnoreCase(token)) return true;
+                }
+                return false;
+        }
+        private boolean isValidKey(String key) {
+                try {
+                        return key != null && Base64.getDecoder().decode(key).length == 16;
+                } catch(IllegalArgumentException e) {
+                        return false;
+                }
         }
         public String getHandShakeResponse() {
                 gappLog.startNewLog("GatorWSHandShakeHandler", "getHandShakeResponse");
@@ -101,10 +116,7 @@ public class GatorWSHandShakeHandler {
                 gappLog.addMessage("Connection: Upgrade", 2);
                 gappLog.addMessage("Upgrade: websocket", 2);
                 gappLog.addMessage("Sec-WebSocket-Accept:" + getAccept(headerData.get("Sec-WebSocket-Key")), 2);
-                if(headerData.get("Sec-WebSocket-Protocol") != null) {
-                        response += "Sec-WebSocket-Protocol: " + headerData.get("Sec-WebSocket-Protocol") + "\r\n";
-                        gappLog.addMessage("Sec-WebSocket-Protocol: " + headerData.get("Sec-WebSocket-Protocol"), 2);
-                } 
+                response += "\r\n";
                 logger.logIt(gappLog, true);
                 if(isValid()) {
                     return response;
@@ -115,7 +127,7 @@ public class GatorWSHandShakeHandler {
         }
         public String getAccept(String _key) {                
                 try {
-                    return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").getBytes("UTF-8")));
+                    return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").getBytes(StandardCharsets.US_ASCII)));
                 } catch(Exception e) {
                     return "";
                 }
