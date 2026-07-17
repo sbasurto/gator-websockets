@@ -245,7 +245,6 @@ src/gator/websockets/
 - Incluir el esquema y los procedimientos de PostgreSQL.
 - Agregar configuraciones de ejemplo independientes de infraestructura privada.
 - Añadir pruebas de interoperabilidad con clientes WebSocket.
-- Definir una política configurable de orígenes permitidos.
 
 ## Contribuciones
 
