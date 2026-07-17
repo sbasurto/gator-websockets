@@ -202,6 +202,13 @@ Los envelopes posteriores omiten `encapsulation`:
 Las secuencias deben recibirse en orden. Un valor repetido, adelantado o un tag
 GCM inválido cierra la conexión.
 
+## Clientes oficiales
+
+El directorio `clients/` incluye clientes compatibles para navegador,
+Android e iOS. Cada cliente conserva el mismo formato HPKE, claves direccionales
+y control de secuencia descritos arriba; consulta `clients/README.md` para sus
+requisitos y ejemplos.
+
 El modelo JSON principal se encuentra en `GatorWSMessage` y utiliza, entre otros, los campos `type`, `message`, `data`, `usuarios` y `destinatarios`.
 
 ## Integración con PostgreSQL
@@ -224,6 +231,10 @@ src/gator/websockets/
 ├── handler/      # Handshake, paquetes y protocolo de mensajes
 ├── helpers/      # Configuración y seguridad
 └── server/       # Socket servidor y sesiones de clientes
+clients/
+├── javascript/   # Navegadores
+├── android/      # Android 8+
+└── ios/          # iOS 13+
 ```
 
 ## Seguridad
@@ -244,7 +255,7 @@ src/gator/websockets/
 
 - Incluir el esquema y los procedimientos de PostgreSQL.
 - Agregar configuraciones de ejemplo independientes de infraestructura privada.
-- Añadir pruebas de interoperabilidad con clientes WebSocket.
+- Añadir pruebas end-to-end contra un servidor y PostgreSQL en ejecución.
 
 ## Contribuciones
 

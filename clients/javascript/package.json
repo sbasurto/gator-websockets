@@ -1,0 +1,17 @@
+{
+  "name": "@gator/websocket-client",
+  "version": "0.1.0",
+  "description": "Browser client for gator-websockets",
+  "type": "module",
+  "exports": "./src/GatorWebSocketClient.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "hpke-js": "1.8.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "GPL-3.0-or-later"
+}

@@ -1,0 +1,42 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'gator.websocket'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api 'com.squareup.okhttp3:okhttp:5.3.0'
+    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.84'
+}
+
+tasks.register('selfCheck', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'gator.websocket.client.GatorProtocolSelfCheck'
+    jvmArgs '-ea'
+}
+
+tasks.named('test') {
+    enabled = false
+}
+
+tasks.named('check') {
+    dependsOn selfCheck
+}

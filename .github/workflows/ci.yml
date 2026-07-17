@@ -29,3 +29,21 @@ jobs:
           cache: gradle
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gator-websockets/gradlew -p gator-websockets clean build
+      - run: ./gator-websockets/gradlew -p gator-websockets/clients/android clean check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: gator-websockets/clients/javascript/package-lock.json
+      - run: npm ci
+        working-directory: gator-websockets/clients/javascript
+      - run: npm test
+        working-directory: gator-websockets/clients/javascript
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path clients/ios
+      - run: xcodebuild -scheme GatorWebSockets -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+        working-directory: clients/ios
