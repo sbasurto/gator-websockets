@@ -60,7 +60,12 @@ withSSL=false
 gappConfigFile=database.properties
 hpkeMaxConnectionsPerKey=500
 hpkeMaxKeyAgeSeconds=86400
+allowedOrigins=https://app.example.com,https://admin.example.com
 ```
+
+`allowedOrigins` compara orígenes completos de forma exacta. Si queda vacío,
+rechaza conexiones de navegador pero permite clientes sin `Origin`; `*` acepta
+cualquier origen y solo debe utilizarse en desarrollo.
 
 Cuando TLS está habilitado también se requieren:
 
@@ -225,6 +230,7 @@ src/gator/websockets/
 
 - En producción debe usarse `wss://`: TLS autentica la oferta de clave HPKE e
   impide que un intermediario la sustituya.
+- El handshake rechaza cualquier `Origin` que no figure en `allowedOrigins`.
 - Java conserva su selección segura de protocolos TLS habilitados.
 - Las claves privadas permanecen en memoria y nunca se envían al cliente ni a
   PostgreSQL.

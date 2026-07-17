@@ -53,7 +53,7 @@ public class GatorWSThread extends Thread {
         private int handshakeBytes = 0;
         private final GatorPacketHandler packetHandler;
         private final GappDateFactory gappDateFactory;
-        private final GatorWSHandShakeHandler handshakeHandler = new GatorWSHandShakeHandler();
+        private final GatorWSHandShakeHandler handshakeHandler;
         private final GatorWSMessageHandler msgHandler;
         private final GatorWSProperties gatorProps;
         private boolean authenticated = false;
@@ -68,6 +68,7 @@ public class GatorWSThread extends Thread {
 		gappLog = new GappLog();                
                 gappDateFactory = new GappDateFactory();
                 gatorProps = new GatorWSProperties(_gatorProps);
+                handshakeHandler = new GatorWSHandShakeHandler(gatorProps.getAllowedOrigins());
                 gatorProps.setInetAddress(socket.getInetAddress().getHostAddress());
                 gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets " + gatorProps.getInetAddress());

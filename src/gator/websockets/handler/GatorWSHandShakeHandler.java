@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,8 +40,10 @@ public class GatorWSHandShakeHandler {
         private final Map<String, String> headerData = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         private final GappLogging logger;
 	private final GappLog gappLog;
+        private final Set<String> allowedOrigins;
         
-        public GatorWSHandShakeHandler() {
+        public GatorWSHandShakeHandler(Set<String> allowedOrigins) {
+                this.allowedOrigins = allowedOrigins;
                 logger = new GappLogging();
                 gappLog = new GappLog();
                 gappLog.setFileToLog("websocket");                        
@@ -90,7 +93,11 @@ public class GatorWSHandShakeHandler {
                     && "websocket".equalsIgnoreCase(headerData.get("Upgrade"))
                     && containsToken(headerData.get("Connection"), "Upgrade")
                     && "13".equals(headerData.get("Sec-WebSocket-Version"))
-                    && isValidKey(headerData.get("Sec-WebSocket-Key"));
+                    && isValidKey(headerData.get("Sec-WebSocket-Key"))
+                    && isAllowedOrigin(headerData.get("Origin"));
+        }
+        private boolean isAllowedOrigin(String origin) {
+                return origin == null || allowedOrigins.contains("*") || allowedOrigins.contains(origin);
         }
         private boolean containsToken(String header, String token) {
                 if(header == null) return false;

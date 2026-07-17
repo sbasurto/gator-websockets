@@ -21,7 +21,10 @@ import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import java.io.FileInputStream;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  *
@@ -36,6 +39,7 @@ public class GatorWSProperties {
         private final String dbConfigurationFile;
         private final int hpkeMaxConnectionsPerKey;
         private final Duration hpkeMaxKeyAge;
+        private final Set<String> allowedOrigins;
         private String id;
         private String inetAddress;
         private final GappLogging logger;
@@ -58,6 +62,8 @@ public class GatorWSProperties {
                 dbConfigurationFile = appProps.getProperty("gappConfigFile");
                 hpkeMaxConnectionsPerKey = Integer.parseInt(appProps.getProperty("hpkeMaxConnectionsPerKey", "500"));
                 hpkeMaxKeyAge = Duration.ofSeconds(Long.parseLong(appProps.getProperty("hpkeMaxKeyAgeSeconds", "86400")));
+                allowedOrigins = Arrays.stream(appProps.getProperty("allowedOrigins", "").split(","))
+                        .map(String::trim).filter(origin -> !origin.isEmpty()).collect(Collectors.toUnmodifiableSet());
                 if(ssl && debug) System.setProperty("javax.net.debug", "ssl");
         }
         public GatorWSProperties(GatorWSProperties source) {
@@ -69,6 +75,7 @@ public class GatorWSProperties {
                 dbConfigurationFile = source.dbConfigurationFile;
                 hpkeMaxConnectionsPerKey = source.hpkeMaxConnectionsPerKey;
                 hpkeMaxKeyAge = source.hpkeMaxKeyAge;
+                allowedOrigins = source.allowedOrigins;
         }
         public int getPort() {
                 return port;
@@ -87,6 +94,9 @@ public class GatorWSProperties {
         }
         public Duration getHpkeMaxKeyAge() {
                 return hpkeMaxKeyAge;
+        }
+        public Set<String> getAllowedOrigins() {
+                return allowedOrigins;
         }
         public String getId() {
                 return id;
