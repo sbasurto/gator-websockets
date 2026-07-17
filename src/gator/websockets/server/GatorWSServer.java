@@ -22,6 +22,7 @@ import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import gator.websockets.exception.WebSocketSSLExpiredException;
 import gator.websockets.helpers.GatorWSProperties;
+import gator.websockets.helpers.GatorWSKeyManager;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -50,6 +51,7 @@ public class GatorWSServer {
 	private final GappLog gappLog;
 	private final GappDateFactory gappDateFactory;
         private final GatorWSProperties gatorProps;
+        private final GatorWSKeyManager keyManager;
 	
 	public GatorWSServer(GatorWSProperties _gatorProps) {
 		logger = new GappLogging();
@@ -57,6 +59,7 @@ public class GatorWSServer {
 	    	gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets");
                 gatorProps = _gatorProps;
+			keyManager = new GatorWSKeyManager(gatorProps.getHpkeMaxConnectionsPerKey(), gatorProps.getHpkeMaxKeyAge());
 	    	gappDateFactory = new GappDateFactory();
                 runServer();
 	}    
@@ -151,7 +154,7 @@ public class GatorWSServer {
 		try {
  			while(true) {
                                 Socket socket = getSocket().accept();
-                                GatorWSThread wsThread = new GatorWSThread(socket, threadList, gatorProps);
+                                GatorWSThread wsThread = new GatorWSThread(socket, threadList, gatorProps, keyManager);
                                 threadList.add(wsThread);
                                 wsThread.start();
 			}

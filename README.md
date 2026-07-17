@@ -8,7 +8,7 @@ El servidor forma parte del ecosistema open source Gator y se construye junto co
 
 - WebSocket sobre TCP o TLS.
 - Una sesión aislada por conexión.
-- Autenticación mediante claves RSA y sesión AES-CBC.
+- Cifrado de aplicación HPKE con X25519, HKDF-SHA-256 y AES-256-GCM.
 - Mensajes directos, difusión y eventos de conexión.
 - Frames de texto, cierre, ping y pong.
 - Mensajes y frames limitados a 16 MiB.
@@ -40,7 +40,8 @@ Con `gator-lib` en otro directorio:
 ./gradlew clean build -PgatorLibDir=/ruta/gator-lib
 ```
 
-El build ejecuta un self-check del framing WebSocket y genera:
+El build ejecuta self-checks del framing WebSocket, el vector oficial de RFC
+9180 y el cifrado bidireccional AES-256-GCM. También genera:
 
 ```text
 dist/gator-websockets.jar
@@ -57,6 +58,8 @@ port=8080
 withDebug=false
 withSSL=false
 gappConfigFile=database.properties
+hpkeMaxConnectionsPerKey=500
+hpkeMaxKeyAgeSeconds=86400
 ```
 
 Cuando TLS está habilitado también se requieren:
@@ -86,27 +89,113 @@ El servidor escucha en la ruta WebSocket `/` y mantiene el proceso activo hasta 
 
 ## Protocolo de aplicación
 
-Después del handshake, el servidor entrega la clave pública asociada con la conexión. Antes de autenticarse solo acepta:
+Después del handshake, el servidor entrega la clave pública X25519 de la
+generación asignada a la conexión. Una generación admite de forma
+predeterminada 500 conexiones o 24 horas, lo que ocurra primero. Las conexiones
+existentes conservan su generación hasta cerrarse.
+
+Antes de autenticarse solo se acepta:
 
 | Tipo | Propósito |
 | --- | --- |
 | `askkey` | Solicita la clave pública del servidor. |
-| `authenticateme` | Envía las credenciales cifradas y la clave pública del cliente. |
+| `authenticateme` | Envía las credenciales dentro del primer envelope HPKE. |
 
 Una sesión autenticada también acepta:
 
 | Tipo | Propósito |
 | --- | --- |
-| `askkeytouse` | Solicita la clave AES de la sesión cifrada con la clave pública del cliente. |
 | `getuserlist` | Consulta los usuarios conectados. |
 | `message` | Envía un mensaje a destinatarios concretos o a todos. |
 | `event` | Difunde un evento. |
 
-Los mensajes cifrados utilizan el formato:
+### Oferta de clave
+
+`askauth` contiene la clave pública X25519 cruda de 32 bytes codificada como
+Base64URL sin padding:
+
+```json
+{
+  "type": "askauth",
+  "keyForAuth": "...",
+  "data": {
+    "version": "1",
+    "keyId": "...",
+    "suite": "DHKEM_X25519_HKDF_SHA256_AES_256_GCM"
+  }
+}
+```
+
+### Inicio de sesión HPKE
+
+La suite sigue el modo base de RFC 9180:
 
 ```text
-<payload AES>::@@::<IV cifrado con RSA>
+KEM  = DHKEM(X25519, HKDF-SHA-256)
+KDF  = HKDF-SHA-256
+AEAD = AES-256-GCM
+info = UTF-8("gator-websockets-v1")
 ```
+
+El primer envelope usa la encapsulación HPKE y la secuencia cero:
+
+```json
+{
+  "version": 1,
+  "keyId": "...",
+  "encapsulation": "...",
+  "sequence": 0,
+  "ciphertext": "..."
+}
+```
+
+`encapsulation` y `ciphertext` usan Base64URL sin padding. El AAD inicial es:
+
+```text
+gator-ws-v1|<keyId>|hpke|0
+```
+
+El texto cifrado contiene el mensaje de autenticación completo:
+
+```json
+{
+  "type": "authenticateme",
+  "message": "passphrase",
+  "data": { "usuario": "usuario-id" }
+}
+```
+
+### Cifrado bidireccional
+
+Después de abrir el primer envelope, cliente y servidor usan `Export` de RFC
+9180 para obtener 44 bytes por dirección:
+
+```text
+gator-ws-v1/client-to-server → 32 bytes de clave + 12 de nonce base
+gator-ws-v1/server-to-client → 32 bytes de clave + 12 de nonce base
+```
+
+Cada dirección inicia su propia secuencia en cero. El nonce se calcula como
+`base_nonce XOR I2OSP(sequence, 12)` y el AAD es, según la dirección:
+
+```text
+gator-ws-v1|<keyId>|client-to-server|<sequence>
+gator-ws-v1|<keyId>|server-to-client|<sequence>
+```
+
+Los envelopes posteriores omiten `encapsulation`:
+
+```json
+{
+  "version": 1,
+  "keyId": "...",
+  "sequence": 0,
+  "ciphertext": "..."
+}
+```
+
+Las secuencias deben recibirse en orden. Un valor repetido, adelantado o un tag
+GCM inválido cierra la conexión.
 
 El modelo JSON principal se encuentra en `GatorWSMessage` y utiliza, entre otros, los campos `type`, `message`, `data`, `usuarios` y `destinatarios`.
 
@@ -114,13 +203,13 @@ El modelo JSON principal se encuentra en `GatorWSMessage` y utiliza, entre otros
 
 La aplicación espera que la capa de base de datos proporcione estos procedimientos almacenados:
 
-- `app_fn_get_private_key`
-- `app_fn_get_pub_key`
 - `app_fn_authenticate_ws`
 - `app_fn_get_usuarios_ws`
 - `app_fn_send_message_ws`
 
-Sus contratos y el esquema SQL todavía deben incorporarse al repositorio antes de la publicación pública.
+Las claves criptográficas ya no se consultan en PostgreSQL. Las tres funciones
+restantes pertenecen a la integración de usuarios y mensajes de cada
+aplicación; reciben y devuelven los objetos JSON descritos por este protocolo.
 
 ## Estructura
 
@@ -134,9 +223,14 @@ src/gator/websockets/
 
 ## Seguridad
 
-- Se recomienda habilitar TLS en cualquier entorno no aislado.
+- En producción debe usarse `wss://`: TLS autentica la oferta de clave HPKE e
+  impide que un intermediario la sustituya.
 - Java conserva su selección segura de protocolos TLS habilitados.
-- Las credenciales, claves, IV y payloads no se escriben en logs.
+- Las claves privadas permanecen en memoria y nunca se envían al cliente ni a
+  PostgreSQL.
+- Las credenciales, claves, nonces y payloads no se escriben en logs.
+- HPKE y AES-GCM agregan confidencialidad, integridad y rechazo de mensajes
+  repetidos a nivel de aplicación.
 - El handshake está limitado a 16 KiB y vence después de 30 segundos.
 - Este proyecto todavía no ha recibido una auditoría de seguridad independiente.
 

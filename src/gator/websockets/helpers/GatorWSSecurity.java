@@ -22,7 +22,6 @@ import gator.lib.db.GappSQLStatement;
 import gator.lib.db.helpers.GappDBHelper;
 import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
-import gator.lib.sec.GappCrypt;
 import gator.websockets.handler.data.GatorWSAuthResponse;
 import gator.websockets.handler.data.GatorWSMessage;
 
@@ -47,135 +46,41 @@ public class GatorWSSecurity {
 	private final GappLog gappLog;
         private final GatorWSProperties gatorProps;
         
-        private String aesKey;
-        private String myPublicKey;
-        private String iv;
+        private final GatorWSHpke hpke;
         
-        public GatorWSSecurity(GatorWSProperties _gatorProps) {
+        public GatorWSSecurity(GatorWSProperties _gatorProps, GatorWSKeyManager.Generation generation) {
                 gatorProps = _gatorProps;
+                hpke = new GatorWSHpke(generation);
                 logger = new GappLogging();
 		gappLog = new GappLog();
                 gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets " + gatorProps.getInetAddress());
         }
         /**
-         * Allows to retrieve the private key for specific client.
-         * 
-         * @return The private key for this client.
-         */
-        private String getPrivateKey() {
-                Gson gson = new Gson();
-                JsonObject jsonObj = new JsonObject();
-                jsonObj.addProperty("id", gatorProps.getId());
-                GappDBHelper helper = new GappDBHelper(gatorProps.getConfigFile());
-                GappSQLStatement gappSQLStmt = new GappSQLStatement();
-                gappSQLStmt.setStoreProcedure("app_fn_get_private_key");
-                gappSQLStmt.addParam(gson.toJson(jsonObj));
-                String privateKey = helper.executeStore(gappSQLStmt);
-                return privateKey;
-        }
-        /**
          * Allows to retrieve the public key for specific client.
-         * @param isAuth Flag telling if it is already authenticated.
          * @return The public key for this client.
          */
-        public String getPubKey(boolean isAuth) {
-                Gson gson = new Gson();
-                JsonObject jsonObj = new JsonObject();
-                jsonObj.addProperty("id", gatorProps.getId());
-                jsonObj.addProperty("isAuthenticated", isAuth);
-                GappDBHelper helper = new GappDBHelper(gatorProps.getConfigFile());
-                GappSQLStatement gappSQLStmt = new GappSQLStatement();
-                gappSQLStmt.setStoreProcedure("app_fn_get_pub_key");
-                gappSQLStmt.addParam(gson.toJson(jsonObj));
-                String pubKey = helper.executeStore(gappSQLStmt);
-                return pubKey;
+        public String getPubKey() {
+                GatorWSMessage response = new GatorWSMessage();
+                response.setType("askauth");
+                response.setKeyForAuth(hpke.publicKey());
+                response.setStatus("success", "Success");
+                response.addData("version", Integer.toString(GatorWSHpke.VERSION));
+                response.addData("keyId", hpke.keyId());
+                response.addData("suite", GatorWSHpke.SUITE);
+                return new Gson().toJson(response);
         }
-        /**
-         * Allows to decrypt a encrypted string.
-         * @param toDecrypt String to be decrypted.
-         * @return Decrypted string.
-         */
-        public String decrypt(String toDecrypt) {
-                GappCrypt gappCrypt = new GappCrypt("default");
-                return gappCrypt.decryptStringWithPem(toDecrypt, getPrivateKey());
+        public boolean isEncryptedEnvelope(String message) {
+                return GatorWSHpke.looksLikeEnvelope(message);
         }
-        /**
-         * Allows to decrypt a encrypted string.
-         * @param toEncrypt String to be encrypted.
-         * @return Encrypted string.
-         */
-        public String encrypt(String toEncrypt) {
-                GappCrypt gappCrypt = new GappCrypt("default");                
-                return gappCrypt.crytpStringWithPEM(toEncrypt, getMyPublicKey());
+        public boolean hasSession() {
+                return hpke.isEstablished();
         }
-        /**
-         * Allows to set client public key for encryption.
-         * @param key The public key to use with this client to encrypt data.
-         */
-        public void setMyPublicKey(String key) {
-                this.myPublicKey = key;
+        public String decryptMessage(String message) throws java.security.GeneralSecurityException {
+                return hpke.open(message);
         }
-        /**
-         * Allows to ask for public key for encryption.
-         * @return The client's public key for encryption.
-         */
-        public String getMyPublicKey() {
-                return this.myPublicKey;
-        }
-        /**
-         * Allows to set client IV for encryption and decryption.
-         * @param iv The IV for encryption and decryption.
-         */
-        public void setIV(String iv) {
-                this.iv = iv;
-        }
-        /**
-         * Allows to ask for public key for encryption.
-         * @return The client's public key for encryption.
-         */
-        public String getIV() {
-                return this.iv;
-        }        
-        /**
-         * Allows to encrypt a string using AES-CBC.
-         * 
-         * @param toEncrypt The string to be encrypted.
-         * 
-         * @return The string encrypted with current key and vi.
-         */
-        public String encryptAES(String toEncrypt) {
-                GappCrypt gappCrypt = new GappCrypt("default");
-                gappCrypt.setAESKey(this.getAESKey());    
-                this.setIV(gappCrypt.getIVStr());
-                return gappCrypt.crytpStringAES(toEncrypt, this.getIV());
-        }
-        /**
-         * Allows to retrieve an AES key, if there is not will create one to use.
-         * @return Return a new AES key if does not exist or the current one.
-         */
-        public String getAESKey() {
-                GappCrypt gappCrypt = new GappCrypt("default");
-                if(this.aesKey == null) {
-                        this.aesKey = gappCrypt.getAESKey();
-                        return this.aesKey;
-                } else {
-                        return this.aesKey;
-                }
-        }
-        /**
-         * Allows to decrypt a string using AES-CBC.
-         * 
-         * @param toDecrypt The string to be encrypted.
-         * @param iv The IV to use to decrypt.
-         * 
-         * @return The string decrypted with current key and vi.
-         */
-        public String decryptAES(String toDecrypt, String iv) {
-                gappLog.startNewLog("GatorWSSecurity", "decryptAES");                                                     
-                GappCrypt gappCrypt = new GappCrypt("default");
-                gappCrypt.setAESKey(this.getAESKey());                    
-                return gappCrypt.decryptStringAES(toDecrypt, this.getAESKey(), iv);
+        public String encryptMessage(String message) throws java.security.GeneralSecurityException {
+                return hpke.seal(message);
         }
         /**
          * Allows to authenticate a user.
@@ -185,7 +90,7 @@ public class GatorWSSecurity {
         public boolean authenticate(GatorWSMessage wsMsg) {
                 gappLog.startNewLog("GatorWSSecurity", "authenticate");
                 if(wsMsg.getMessage() == null || wsMsg.getData() == null
-                        || wsMsg.getData().get("usuario") == null || wsMsg.getData().get("key") == null) {
+                        || wsMsg.getData().get("usuario") == null) {
                         return false;
                 }
                 Gson gson = new Gson();
@@ -194,8 +99,8 @@ public class GatorWSSecurity {
                 GappSQLStatement gappSQLStmt = new GappSQLStatement();
                 jsonObj.addProperty("id", gatorProps.getId());
                 jsonObj.addProperty("ipAddr", gatorProps.getInetAddress());
-                jsonObj.addProperty("usuario", decrypt(wsMsg.getData().get("usuario")));
-                jsonObj.addProperty("passphrase", decrypt(wsMsg.getMessage()));
+                jsonObj.addProperty("usuario", wsMsg.getData().get("usuario"));
+                jsonObj.addProperty("passphrase", wsMsg.getMessage());
                 gappSQLStmt.setStoreProcedure("app_fn_authenticate_ws");
                 gappSQLStmt.addParam(gson.toJson(jsonObj));
                 String json = helper.executeStore(gappSQLStmt);
@@ -203,8 +108,6 @@ public class GatorWSSecurity {
                 if(authResp != null && authResp.wasSuccessful()) {
                         setUserId(authResp.getUsuario().getId());
                         setName(getAuthResponse().getUsuario().getNombre());
-                        setMyPublicKey(wsMsg.getData().get("key"));
-                        getAESKey();
                         gappLog.clearMessages();
                         gappLog.addMessage("Ids: (ori) - " + gatorProps.getId() + ", (new) - " + authResp.getUsuario().getNombre(), 2);                                    
                         logger.logIt(gappLog, gatorProps.withDebug());

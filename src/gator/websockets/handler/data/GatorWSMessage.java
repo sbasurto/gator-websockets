@@ -50,13 +50,6 @@ public class GatorWSMessage {
         private String keyForAuth;
         
         /**
-         * If type is askkey this field must be filled or when the 
-         * type is askauth but is already authenticated then
-         * this key must be used to encrypt message during session.
-         */
-        private String keyToUse;
-        
-        /**
          * The status that is been reported in this message, could
          * be error or success.
          */
@@ -226,22 +219,6 @@ public class GatorWSMessage {
         public void addElementToList(HashMap<String, String> el) {
                 list.add(el);
         }
-        /**
-         * Allows to set the public key to use.
-         * @param key The public key to be settled. 
-         */
-        public void setKeyToUse(String key) {
-                this.keyToUse = key;
-        }
-        
-        /**
-         * Allows to retrieve the key to use.
-         * 
-         * @return The key to use.
-         */
-        public String getKeyToUse() {
-                return keyToUse;
-        }        
         /**
          * Allows to retrieve the message's users list.
          * 

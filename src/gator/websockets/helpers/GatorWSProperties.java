@@ -20,6 +20,7 @@ import gator.lib.io.files.GappFiles;
 import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import java.io.FileInputStream;
+import java.time.Duration;
 import java.util.Properties;
 
 /**
@@ -33,6 +34,8 @@ public class GatorWSProperties {
         private final boolean debug;
         private final boolean ssl;
         private final String dbConfigurationFile;
+        private final int hpkeMaxConnectionsPerKey;
+        private final Duration hpkeMaxKeyAge;
         private String id;
         private String inetAddress;
         private final GappLogging logger;
@@ -53,6 +56,8 @@ public class GatorWSProperties {
                 debug = Boolean.parseBoolean(appProps.getProperty("withDebug"));
                 ssl = Boolean.parseBoolean(appProps.getProperty("withSSL"));
                 dbConfigurationFile = appProps.getProperty("gappConfigFile");
+                hpkeMaxConnectionsPerKey = Integer.parseInt(appProps.getProperty("hpkeMaxConnectionsPerKey", "500"));
+                hpkeMaxKeyAge = Duration.ofSeconds(Long.parseLong(appProps.getProperty("hpkeMaxKeyAgeSeconds", "86400")));
                 if(ssl && debug) System.setProperty("javax.net.debug", "ssl");
         }
         public GatorWSProperties(GatorWSProperties source) {
@@ -62,6 +67,8 @@ public class GatorWSProperties {
                 debug = source.debug;
                 ssl = source.ssl;
                 dbConfigurationFile = source.dbConfigurationFile;
+                hpkeMaxConnectionsPerKey = source.hpkeMaxConnectionsPerKey;
+                hpkeMaxKeyAge = source.hpkeMaxKeyAge;
         }
         public int getPort() {
                 return port;
@@ -74,6 +81,12 @@ public class GatorWSProperties {
         }
         public String getConfigFile() {
                 return dbConfigurationFile;
+        }
+        public int getHpkeMaxConnectionsPerKey() {
+                return hpkeMaxConnectionsPerKey;
+        }
+        public Duration getHpkeMaxKeyAge() {
+                return hpkeMaxKeyAge;
         }
         public String getId() {
                 return id;

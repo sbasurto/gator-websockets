@@ -18,7 +18,6 @@ package gator.websockets.handler;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import gator.lib.db.GappSQLStatement;
 import gator.lib.db.helpers.GappDBHelper;
 import gator.lib.logs.GappLog;
@@ -68,20 +67,17 @@ public class GatorWSMessageHandler {
                 gappLog.startNewLog("GatorWSMessageHandler", "processMessage");                                     
                 hasResponse = false;
                 Gson gson = new Gson();
-                if(!this.isJson(message)) {
-                    String []els = message.split("::@@::");
-                    if(els.length != 2 || els[0].isEmpty() || els[1].isEmpty()) {
-                        setForceClosure(new GatorWSMessage(), "Malformed encrypted message");
-                        return;
-                    }
+                boolean encrypted = gatorSecurity.isEncryptedEnvelope(message);
+                if(encrypted) {
                     try {
-                        String iv = gatorSecurity.decrypt(els[1]);
-                        gatorSecurity.setIV(iv);
-                        message = gatorSecurity.decryptAES(els[0], iv);
+                        message = gatorSecurity.decryptMessage(message);
                     } catch(Exception e) {
                         setForceClosure(new GatorWSMessage(), "Cannot decrypt message");
                         return;
                     }
+                } else if(isAuth) {
+                        setForceClosure(new GatorWSMessage(), "Encrypted message required");
+                        return;
                 }
                 GatorWSMessage wsMsg;
                 try {
@@ -96,16 +92,16 @@ public class GatorWSMessageHandler {
                 }
                 if(!isAuth) {
                     switch (wsMsg.getType()) {
-                        case "askkey" -> setAskAuth(isAuth);
-                        case "authenticateme" -> authenticate(wsMsg);
+                        case "askkey" -> setAskAuth();
+                        case "authenticateme" -> {
+                                if(encrypted && gatorSecurity.hasSession()) authenticate(wsMsg);
+                                else setForceClosure(wsMsg, "Encrypted authentication required");
+                        }
                         default -> setForceClosure(wsMsg);
                     }
                 } else {                        
                         if(wsMsg.getType().equals("askkey")) {
-                                setAskAuth(isAuth);
-                        }
-                        if(wsMsg.getType().equals("askkeytouse")) {
-                                setKeyToUse();
+                                setAskAuth();
                         }
                         if(wsMsg.getType().equals("getuserlist")) {
                                 setUserList();
@@ -123,26 +119,11 @@ public class GatorWSMessageHandler {
                 }
         }
         /**
-         * Allows to test a string for JSON.
-         * @param json The string to be tested.
-         * @return True if the string is a valid JSON, false otherwise.
-         */
-        public boolean isJson(String json) {
-                gappLog.startNewLog("GatorWSMessageHandler", "processMessage");
-                try {
-                        JsonParser.parseString(json);
-                } catch(Exception e) {                        
-                        return false;
-                }
-                return true;
-        }
-        /**
          * Set the ask authorization message.
-         * @param isAuth Flag to tell if thread is already authenticated.
          */
-        public void setAskAuth(boolean isAuth) {
+        public void setAskAuth() {
                 Gson gson = new Gson();
-                responseMsgs.add(gson.fromJson(gatorSecurity.getPubKey(isAuth), GatorWSMessage.class));
+                responseMsgs.add(gson.fromJson(gatorSecurity.getPubKey(), GatorWSMessage.class));
                 hasResponse = true;
         }
         /**
@@ -154,7 +135,6 @@ public class GatorWSMessageHandler {
                         GatorWSMessage responseMsg = new GatorWSMessage();                                
                         responseMsg.setType("authsuccess");                                
                         responseMsg.setStatus("success", "Authentication successful");                        
-                        responseMsg.setKeyToUse(gatorSecurity.encrypt(gatorSecurity.getAESKey()));
                         responseMsgs.add(responseMsg);
                         responseMsg = new GatorWSMessage();
                         responseMsg.setType("event");                                                
@@ -184,7 +164,6 @@ public class GatorWSMessageHandler {
                 GatorWSMessage responseMsg = new GatorWSMessage();                                
                 responseMsg.setType("forcedclosure");                                
                 responseMsg.setStatus("error", messageStatus);                                
-                responseMsg.addData("msgOri", wsMsg.getMessage());
                 responseMsgs.add(responseMsg);
                 hasResponse = true;
         }
@@ -213,18 +192,6 @@ public class GatorWSMessageHandler {
         public String getResponseMsgAsString(GatorWSMessage gatorWSMessage) {
                 Gson gson = new Gson();
                 return gson.toJson(gatorWSMessage);
-        }
-        /**
-         * Set the ask authorization message.
-         */
-        public void setKeyToUse() {
-                gappLog.startNewLog("GatorWSMessageHandler", "setKeyToUse");                                                     
-                GatorWSMessage responseMsg = new GatorWSMessage();
-                responseMsg.setType("keytouse");
-                responseMsg.setStatus("success", "");                        
-                responseMsg.setKeyToUse(gatorSecurity.encrypt(gatorSecurity.getAESKey()));
-                responseMsgs.add(responseMsg);
-                hasResponse = true;                               
         }
         /**
          * Set the ask authorization message.
@@ -318,8 +285,6 @@ public class GatorWSMessageHandler {
                 GatorWSMessage responseMsg = sendMessageDataBase(wsMsg);
                 responseMsg.addUsuario(usuario);
                 responseMsg.toAll();
-                gappLog.addMessage(getResponseMsgAsString(responseMsg), 2);
-                logger.logIt(gappLog, gatorProps.withDebug());
                 responseMsgs.add(responseMsg);                
                 hasResponse = true;
         }

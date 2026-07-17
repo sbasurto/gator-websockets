@@ -27,6 +27,7 @@ import gator.websockets.handler.data.GatorWSMessage;
 import gator.websockets.handler.data.GatorWSUsuario;
 import gator.websockets.helpers.GatorWSProperties;
 import gator.websockets.helpers.GatorWSSecurity;
+import gator.websockets.helpers.GatorWSKeyManager;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -59,7 +60,8 @@ public class GatorWSThread extends Thread {
         private final GatorWSSecurity gatorSecurity;
         private boolean closeMe = false;
         
-        public GatorWSThread(Socket _socket, CopyOnWriteArrayList<GatorWSThread> _threadList, GatorWSProperties _gatorProps) {
+        public GatorWSThread(Socket _socket, CopyOnWriteArrayList<GatorWSThread> _threadList,
+                GatorWSProperties _gatorProps, GatorWSKeyManager keyManager) {
                 socket = _socket;
                 threadList = _threadList;
                 logger = new GappLogging();
@@ -70,7 +72,7 @@ public class GatorWSThread extends Thread {
                 gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets " + gatorProps.getInetAddress());
                 packetHandler = new GatorPacketHandler(gatorProps);
-                gatorSecurity = new GatorWSSecurity(gatorProps);
+                gatorSecurity = new GatorWSSecurity(gatorProps, keyManager.acquire());
                 msgHandler = new GatorWSMessageHandler(gatorProps, gatorSecurity);
                 setMyId();
                 gatorProps.setId(getMyId());
@@ -140,7 +142,7 @@ public class GatorWSThread extends Thread {
                                     procesaLinea(input.readLine(), output);                                        
                                     if(handshakeHandler.isValid()) {
                                             socket.setSoTimeout(0);
-                                            sendMessage(output0, gatorSecurity.getPubKey(amIAuthenticated()));
+                                            sendMessage(output0, gatorSecurity.getPubKey());
                                     }                                                                        
                                 }
                                 if(closeMe()) {
@@ -200,8 +202,20 @@ public class GatorWSThread extends Thread {
         }
         private void sendMessage(OutputStream output, String _message) {
                 gappLog.startNewLog("GatorWSThread", "sendMessage(String)");
-                byte []message = packetHandler.createMessage(_message, GatorWSOutputFrame.TEXT_FRAME);
-                sendMessage(output, message);
+                try {
+                        synchronized(output) {
+                                String payload = gatorSecurity.hasSession()
+                                        ? gatorSecurity.encryptMessage(_message) : _message;
+                                output.write(packetHandler.createMessage(payload, GatorWSOutputFrame.TEXT_FRAME));
+                                output.flush();
+                        }
+                } catch(Exception e) {
+                        gappLog.clearMessages();
+                        gappLog.addMessage("Cannot encrypt or send websocket message", 2);
+                        gappLog.addMessage(logger.getStackTraceString(e), 2);
+                        logger.logIt(gappLog, gatorProps.withDebug());
+                        setCloseMe(true);
+                }
         }
         private void sendMessage(OutputStream output, byte []_message) {
                 byte[] message = _message;
@@ -258,10 +272,10 @@ public class GatorWSThread extends Thread {
             gappLog.startNewLog("GatorWSThread", "sendMessageToAll");
             try{
                 for(GatorWSThread wsThread: threadList) {
-                    if(wsThread.isAlive()) {
-                        sendMessage(wsThread.getSocket().getOutputStream(), msg);
-                    } else {
+                    if(!wsThread.isAlive()) {
                         threadList.remove(wsThread);
+                    } else if(wsThread.amIAuthenticated()) {
+                        wsThread.sendMessage(wsThread.getSocket().getOutputStream(), msg);
                     }
                 }
             } catch(Exception e) {
@@ -276,8 +290,8 @@ public class GatorWSThread extends Thread {
             GatorWSThread destThread = searchThread(destinatario);
             try{   
                 if(destThread != null) {
-                    if(destThread.isAlive()) {                                                
-                        sendMessage(destThread.getSocket().getOutputStream(), msg);                    
+                    if(destThread.isAlive() && destThread.amIAuthenticated()) {
+                        destThread.sendMessage(destThread.getSocket().getOutputStream(), msg);
                     }
                 }
             } catch(Exception e) {
