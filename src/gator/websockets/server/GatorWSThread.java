@@ -28,9 +28,9 @@ import gator.websockets.handler.data.GatorWSUsuario;
 import gator.websockets.helpers.GatorWSProperties;
 import gator.websockets.helpers.GatorWSSecurity;
 import gator.websockets.helpers.GatorWSKeyManager;
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
@@ -56,9 +56,9 @@ public class GatorWSThread extends Thread {
         private final GatorWSHandShakeHandler handshakeHandler;
         private final GatorWSMessageHandler msgHandler;
         private final GatorWSProperties gatorProps;
-        private boolean authenticated = false;
+        private volatile boolean authenticated = false;
         private final GatorWSSecurity gatorSecurity;
-        private boolean closeMe = false;
+        private volatile boolean closeMe = false;
         
         public GatorWSThread(Socket _socket, CopyOnWriteArrayList<GatorWSThread> _threadList,
                 GatorWSProperties _gatorProps, GatorWSKeyManager keyManager) {
@@ -91,10 +91,9 @@ public class GatorWSThread extends Thread {
         public void run () {
                 gappLog.startNewLog("GatorWSThread", "run");
 		try {                    
-                        socket.setSoTimeout(30_000);
+                        socket.setSoTimeout(gatorProps.getHandshakeTimeoutMillis());
                         InputStream input0 = socket.getInputStream();
                         OutputStream output0 = socket.getOutputStream();
-	                BufferedReader input = new BufferedReader(new InputStreamReader(input0, StandardCharsets.US_ASCII));
                         PrintWriter output = new PrintWriter(output0, true);
                         int readByte;
                         gappLog.startNewLog("GatorWSThread", "run");
@@ -106,12 +105,12 @@ public class GatorWSThread extends Thread {
                                             gappLog.clearMessages();
                                             
                                             byte[] messageBytes = packetHandler.getFrameData();
-                                            String message = new String(messageBytes, StandardCharsets.UTF_8);
                                             if(packetHandler.getKind().equals("ping")) {
-                                                sendMessage(output0, packetHandler.pong(message));
+                                                sendMessage(output0, packetHandler.pong(messageBytes));
                                                 continue;
                                             }
                                             if(packetHandler.getKind().equals("pong")) continue;
+                                            String message = new String(messageBytes, StandardCharsets.UTF_8);
                                             msgHandler.processMessage(message, amIAuthenticated());
                                             processResponses(output0);                                            
                                             
@@ -140,9 +139,9 @@ public class GatorWSThread extends Thread {
                                     }
                                     setCloseMe(true);
                                 } else {
-                                    procesaLinea(input.readLine(), output);                                        
+                                    procesaLinea(readHandshakeLine(input0), output);
                                     if(handshakeHandler.isValid()) {
-                                            socket.setSoTimeout(0);
+                                            socket.setSoTimeout(gatorProps.getAuthenticationTimeoutMillis());
                                             sendMessage(output0, gatorSecurity.getPubKey());
                                     }                                                                        
                                 }
@@ -179,14 +178,30 @@ public class GatorWSThread extends Thread {
                     }
                 }                 
             } else {
-                handshakeBytes += linea.length() + 2;
-                if(handshakeBytes > 16_384) {
-                    setCloseMe(true);
-                } else {
-                    buffer.add(linea);
-                }
+                buffer.add(linea);
             }
-        }                
+        }
+        private String readHandshakeLine(InputStream input) throws IOException {
+                ByteArrayOutputStream line = new ByteArrayOutputStream();
+                boolean carriageReturn = false;
+                while(true) {
+                        int value = input.read();
+                        if(value == -1) return null;
+                        handshakeBytes++;
+                        if(handshakeBytes > 16_384) throw new IOException("WebSocket handshake exceeds 16 KiB");
+                        if(value == '\n') {
+                                if(!carriageReturn) throw new IOException("WebSocket handshake lines must end with CRLF");
+                                return line.toString(StandardCharsets.US_ASCII);
+                        }
+                        if(carriageReturn) throw new IOException("Invalid carriage return in WebSocket handshake");
+                        if(value == '\r') {
+                                carriageReturn = true;
+                        } else {
+                                if(value > 0x7f) throw new IOException("WebSocket handshake must use ASCII headers");
+                                line.write(value);
+                        }
+                }
+        }
         private boolean amIAuthenticated() {
                 return authenticated;
         }
@@ -233,7 +248,7 @@ public class GatorWSThread extends Thread {
                         logger.logIt(gappLog, gatorProps.withDebug());
                 }
         }
-        private void processResponses(OutputStream output) {
+        private void processResponses(OutputStream output) throws IOException {
             gappLog.startNewLog("GatorWSThread", "processResponses");
             if(msgHandler.hasResponse()) {
                 for(GatorWSMessage msg: msgHandler.getResponseMsgs()) {
@@ -245,6 +260,7 @@ public class GatorWSThread extends Thread {
                             sendMessage(output, msgHandler.getResponseMsgAsString(msg));
                             if(msg.getType().equals("authsuccess")) {
                                 setAuthenticated(msgHandler.successfulAuth());
+                                if(amIAuthenticated()) socket.setSoTimeout(gatorProps.getIdleTimeoutMillis());
                             }
                         }
                         if(msg.isForAll()) {

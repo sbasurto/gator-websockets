@@ -25,6 +25,10 @@ import gator.websockets.helpers.GatorWSProperties;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 
 /**
  *
@@ -207,7 +211,7 @@ public class GatorWSInputFrame extends GatorWSFrame {
                 isFIN = fin == 128;
                 gappLog.addMessage("FIN:" + isFIN, 2);
                 gappLog.addMessage("Opcode:" + kind, 2);
-                logger.logIt(gappLog, gatorProps.withDebug());
+                logger.logIt(gappLog, withDebug());
                 
                 if((firstByte & 0x70) != 0) {
                         throw new WebSocketFormatException("RSV bits require a negotiated extension");
@@ -301,13 +305,13 @@ public class GatorWSInputFrame extends GatorWSFrame {
                             isDataSettled = true;
                     }
                     gappLog.addMessage("Frame length: " + payloadLength, 2);
-                    logger.logIt(gappLog, gatorProps.withDebug());                     
+                    logger.logIt(gappLog, withDebug());
                 }
                 if (valor == 126) {
                     // We will read the next 2 bytes 
                     // as unsigend 16 bits integer and this will tell us the length.
                     gappLog.addMessage("Frame length is a 16 unsigned bit integer: " + valor, 2);
-                    logger.logIt(gappLog, gatorProps.withDebug());
+                    logger.logIt(gappLog, withDebug());
                     lengthSettled = false;                     
                     frameLength = new byte[2];
                 }
@@ -318,7 +322,7 @@ public class GatorWSInputFrame extends GatorWSFrame {
                      // and low-order byte is recived last, this means that the firs byte arriving
                      // in the connection will be the most siginificant one, little-endiand is the other way around.
                     gappLog.addMessage("Frame length is a 64 unsigned bit integer: " + valor, 2);
-                    logger.logIt(gappLog, gatorProps.withDebug());
+                    logger.logIt(gappLog, withDebug());
                     lengthSettled = false;                     
                     frameLength = new byte[8];
                 }
@@ -339,7 +343,7 @@ public class GatorWSInputFrame extends GatorWSFrame {
          * @throws java.io.IOException 
          * @throws gator.websockets.exception.WebSocketMaxLengthException 
          */
-        public void setLength(byte b) throws IOException, WebSocketMaxLengthException {
+        public void setLength(byte b) throws IOException, WebSocketMaxLengthException, WebSocketFormatException {
                 gappLog.startNewLog("GatorWSInputFrame", "setLength");
                 frameLength[lengthIndex] = b;
                 lengthIndex++;
@@ -350,6 +354,9 @@ public class GatorWSInputFrame extends GatorWSFrame {
                         if (frameLength.length == 2) {
                                 DataInputStream reader = new DataInputStream(new ByteArrayInputStream(frameLength));
                                 temporalLength = reader.readUnsignedShort();
+                                if(temporalLength < 126) {
+                                        throw new WebSocketFormatException("Payload length must use its shortest encoding");
+                                }
                         }
                         if (frameLength.length == 8) {
                                 DataInputStream reader = new DataInputStream(new ByteArrayInputStream(frameLength));
@@ -358,16 +365,22 @@ public class GatorWSInputFrame extends GatorWSFrame {
                                 gappLog.clearMessages();
                                 gappLog.addMessage("Requested frame length: " + temporalLengthLong, 2);
                                 gappLog.addMessage("Allowed frame max length: " + maxLength, 2);
-                                logger.logIt(gappLog, gatorProps.withDebug());
-                                if(temporalLengthLong < 0 || temporalLengthLong > maxLength) {
+                                logger.logIt(gappLog, withDebug());
+                                if(temporalLengthLong < 0) {
+                                        throw new WebSocketFormatException("The most significant payload length bit must be zero");
+                                }
+                                if(temporalLengthLong > maxLength) {
                                         throw new WebSocketMaxLengthException("The payload length (" + temporalLengthLong + ") exceeds the 16 MiB limit.");
+                                }
+                                if(temporalLengthLong < 65_536) {
+                                        throw new WebSocketFormatException("Payload length must use its shortest encoding");
                                 }
                                 temporalLength = (int) temporalLengthLong;
                         }
                         payloadLength = temporalLength;
                         gappLog.clearMessages();                                
                         gappLog.addMessage("Frame length: " + payloadLength, 2);
-                        logger.logIt(gappLog, gatorProps.withDebug());
+                        logger.logIt(gappLog, withDebug());
                         dataEncoded = new byte[payloadLength];
                 }
         }
@@ -524,10 +537,10 @@ public class GatorWSInputFrame extends GatorWSFrame {
                         return isFull() && !isThisTheCloseFrame();
                 }
                 if(isThisTheCloseFrame()) {
-                        if(isClosureReady()) {
-                                fullFrame();
-                        } else {
-                                setStatusCode(readByte);
+                        if(isDataSettled()) return false;
+                        if(setData(readByte)) {
+                                validateClosePayload();
+                                setClosureReady();
                         }
                         return false;
                 } else if (!isDataSettled()) {
@@ -563,5 +576,31 @@ public class GatorWSInputFrame extends GatorWSFrame {
          */
         public boolean isEndOfMessage() {
                 return messageEnds;
-        }        
+        }
+        private void validateClosePayload() throws WebSocketFormatException {
+                byte[] decoded = getData();
+                if(decoded.length == 0) {
+                        statusCodeNumber = 1000;
+                        return;
+                }
+                statusCodeNumber = ((decoded[0] & 0xff) << 8) | (decoded[1] & 0xff);
+                if(statusCodeNumber < 1000 || statusCodeNumber >= 5000
+                        || statusCodeNumber == 1004 || statusCodeNumber == 1005
+                        || statusCodeNumber == 1006 || statusCodeNumber == 1015) {
+                        throw new WebSocketFormatException("Invalid WebSocket close status code");
+                }
+                if(decoded.length > 2) {
+                        try {
+                                StandardCharsets.UTF_8.newDecoder()
+                                        .onMalformedInput(CodingErrorAction.REPORT)
+                                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                        .decode(ByteBuffer.wrap(decoded, 2, decoded.length - 2));
+                        } catch(CharacterCodingException e) {
+                                throw new WebSocketFormatException("WebSocket close reason must be valid UTF-8", 1007);
+                        }
+                }
+        }
+        private boolean withDebug() {
+                return gatorProps != null && gatorProps.withDebug();
+        }
 }

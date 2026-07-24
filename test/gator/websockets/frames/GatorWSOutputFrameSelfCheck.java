@@ -1,11 +1,13 @@
 package gator.websockets.frames;
 
 import gator.websockets.handler.GatorWSHandShakeSelfCheck;
+import gator.websockets.handler.GatorPacketHandlerSelfCheck;
 import gator.websockets.helpers.GatorWSHpkeSelfCheck;
 
 public class GatorWSOutputFrameSelfCheck {
         public static void main(String[] args) throws Exception {
                 GatorWSHandShakeSelfCheck.run();
+                GatorPacketHandlerSelfCheck.run();
                 byte[] medium = new GatorWSOutputFrame(GatorWSFrame.TEXT_FRAME).addData(new byte[32_768]);
                 assert medium.length == 32_772;
                 assert (medium[1] & 0xff) == 126;

@@ -44,6 +44,6 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: swift test --package-path clients/ios
+      - run: swift test
       - run: xcodebuild -scheme GatorWebSockets -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
         working-directory: clients/ios

@@ -11,6 +11,7 @@ public final class GatorWSHandShakeSelfCheck {
                 assert !handshake(Set.of("https://app.example.com"), "https://evil.example.com");
                 assert handshake(Set.of(), null);
                 assert handshake(Set.of("*"), "https://any.example.com");
+                assert handshakeWithoutHeaderWhitespace();
         }
 
         private static boolean handshake(Set<String> allowedOrigins, String origin) {
@@ -22,5 +23,14 @@ public final class GatorWSHandShakeSelfCheck {
                 request.add("Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==");
                 if(origin != null) request.add("Origin: " + origin);
                 return new GatorWSHandShakeHandler(allowedOrigins).procesaSaludo(request);
+        }
+        private static boolean handshakeWithoutHeaderWhitespace() {
+                ArrayList<String> request = new ArrayList<>();
+                request.add("GET / HTTP/1.1");
+                request.add("Upgrade:websocket");
+                request.add("Connection:Upgrade");
+                request.add("Sec-WebSocket-Version:13");
+                request.add("Sec-WebSocket-Key:dGhlIHNhbXBsZSBub25jZQ==");
+                return new GatorWSHandShakeHandler(Set.of()).procesaSaludo(request);
         }
 }

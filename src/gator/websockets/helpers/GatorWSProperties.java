@@ -40,6 +40,10 @@ public class GatorWSProperties {
         private final int hpkeMaxConnectionsPerKey;
         private final Duration hpkeMaxKeyAge;
         private final Set<String> allowedOrigins;
+        private final int maxConnections;
+        private final int handshakeTimeoutMillis;
+        private final int authenticationTimeoutMillis;
+        private final int idleTimeoutMillis;
         private String id;
         private String inetAddress;
         private final GappLogging logger;
@@ -64,6 +68,10 @@ public class GatorWSProperties {
                 hpkeMaxKeyAge = Duration.ofSeconds(Long.parseLong(appProps.getProperty("hpkeMaxKeyAgeSeconds", "86400")));
                 allowedOrigins = Arrays.stream(appProps.getProperty("allowedOrigins", "").split(","))
                         .map(String::trim).filter(origin -> !origin.isEmpty()).collect(Collectors.toUnmodifiableSet());
+                maxConnections = positiveInt("maxConnections", 1000);
+                handshakeTimeoutMillis = positiveSecondsAsMillis("handshakeTimeoutSeconds", 30, false);
+                authenticationTimeoutMillis = positiveSecondsAsMillis("authenticationTimeoutSeconds", 30, false);
+                idleTimeoutMillis = positiveSecondsAsMillis("idleTimeoutSeconds", 300, true);
                 if(ssl && debug) System.setProperty("javax.net.debug", "ssl");
         }
         public GatorWSProperties(GatorWSProperties source) {
@@ -76,6 +84,10 @@ public class GatorWSProperties {
                 hpkeMaxConnectionsPerKey = source.hpkeMaxConnectionsPerKey;
                 hpkeMaxKeyAge = source.hpkeMaxKeyAge;
                 allowedOrigins = source.allowedOrigins;
+                maxConnections = source.maxConnections;
+                handshakeTimeoutMillis = source.handshakeTimeoutMillis;
+                authenticationTimeoutMillis = source.authenticationTimeoutMillis;
+                idleTimeoutMillis = source.idleTimeoutMillis;
         }
         public int getPort() {
                 return port;
@@ -98,6 +110,18 @@ public class GatorWSProperties {
         public Set<String> getAllowedOrigins() {
                 return allowedOrigins;
         }
+        public int getMaxConnections() {
+                return maxConnections;
+        }
+        public int getHandshakeTimeoutMillis() {
+                return handshakeTimeoutMillis;
+        }
+        public int getAuthenticationTimeoutMillis() {
+                return authenticationTimeoutMillis;
+        }
+        public int getIdleTimeoutMillis() {
+                return idleTimeoutMillis;
+        }
         public String getId() {
                 return id;
         }
@@ -117,5 +141,17 @@ public class GatorWSProperties {
          */
         public String getInetAddress() {                                   
                 return inetAddress;
+        }
+        private int positiveInt(String property, int defaultValue) {
+                int value = Integer.parseInt(appProps.getProperty(property, Integer.toString(defaultValue)));
+                if(value < 1) throw new IllegalArgumentException(property + " must be positive");
+                return value;
+        }
+        private int positiveSecondsAsMillis(String property, int defaultValue, boolean allowZero) {
+                long seconds = Long.parseLong(appProps.getProperty(property, Integer.toString(defaultValue)));
+                if(seconds < 0 || (!allowZero && seconds == 0) || seconds > Integer.MAX_VALUE / 1000L) {
+                        throw new IllegalArgumentException(property + " has an invalid value");
+                }
+                return Math.toIntExact(seconds * 1000L);
         }
 }

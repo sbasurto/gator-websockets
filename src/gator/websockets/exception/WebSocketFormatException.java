@@ -24,8 +24,11 @@ package gator.websockets.exception;
 public class WebSocketFormatException extends Exception {
             private final int statusCode;
             public WebSocketFormatException(String message) {
+                    this(message, 1002);
+            }
+            public WebSocketFormatException(String message, int statusCode) {
                     super(message);
-                    statusCode = 1002;
+                    this.statusCode = statusCode;
             }
             public int getStatusCode() {
                     return statusCode;

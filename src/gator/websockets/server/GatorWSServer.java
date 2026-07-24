@@ -69,6 +69,7 @@ public class GatorWSServer {
 		    	if(gatorProps.withSSL()) {
 		        	if(sslSocketServer == null) {
 		            		sslSocketServer = getSSLSocket(gatorProps.getPort());
+                                        if(sslSocketServer == null) throw new IllegalStateException("Cannot create the TLS server socket");
                                         gappLog.addMessage("Listening in port " + gatorProps.getPort() + " with SSL");
 		        	}
 	                        
@@ -86,7 +87,7 @@ public class GatorWSServer {
 	                gappLog.addMessage("The following error occurs:");                        
 			gappLog.addMessage(logger.getStackTraceString(e), 2);
 			logger.logIt(gappLog, gatorProps.withDebug());
-			return null;
+			throw new IllegalStateException("Cannot create the websocket server socket", e);
 		}
 	}
         /**
@@ -152,8 +153,15 @@ public class GatorWSServer {
                 // ponytail: copy-on-write favors modest connection churn; use a keyed concurrent registry if profiling says otherwise.
                 CopyOnWriteArrayList<GatorWSThread> threadList = new CopyOnWriteArrayList<>();
 		try {
- 			while(true) {
+			while(true) {
                                 Socket socket = getSocket().accept();
+                                if(threadList.size() >= gatorProps.getMaxConnections()) {
+                                        socket.close();
+                                        gappLog.startNewLog("GatorWSServer", "runServer");
+                                        gappLog.addMessage("Connection rejected because the server reached its configured limit");
+                                        logger.logIt(gappLog, true);
+                                        continue;
+                                }
                                 GatorWSThread wsThread = new GatorWSThread(socket, threadList, gatorProps, keyManager);
                                 threadList.add(wsThread);
                                 wsThread.start();
@@ -162,6 +170,7 @@ public class GatorWSServer {
                         gappLog.addMessage("The following error occurs:");
                         gappLog.addMessage(logger.getStackTraceString(e), 2);
 			logger.logIt(gappLog, gatorProps.withDebug());
+                        throw new IllegalStateException("The websocket server stopped unexpectedly", e);
                 }
         }
 }

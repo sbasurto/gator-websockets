@@ -140,7 +140,7 @@ public class GatorWSMessageHandler {
                         responseMsg.setType("event");                                                
                         responseMsg.setMessage("gatorwsuserconn");
                         responseMsg.addUsuario(gatorSecurity.getAuthResponse().getUsuario());
-                        responseMsg.notToAll();
+                        responseMsg.toAll();
                         responseMsg.itHasNotReceiver();
                         responseMsgs.add(responseMsg);
                         hasResponse = true;

@@ -25,6 +25,7 @@ import java.security.SecureRandom;
  * @version 1.0
  */
 public class GatorWSOutputFrame  extends GatorWSFrame {                
+        private static final int MAX_MESSAGE_SIZE = 16 * 1024 * 1024;
         /**
          * The frame.
          */
@@ -102,6 +103,9 @@ public class GatorWSOutputFrame  extends GatorWSFrame {
          * @return Data as an array of bytes.
          */
         public byte[] addData(byte[] messageBytes) {
+                if(messageBytes.length > MAX_MESSAGE_SIZE) {
+                        throw new IllegalArgumentException("The message exceeds the 16 MiB limit");
+                }
                 byte []maskedBytes = new byte[messageBytes.length];
                 if(isMasked) {
                         for (int i = 0; i < messageBytes.length; i++) {						

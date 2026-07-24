@@ -10,7 +10,8 @@ El servidor forma parte del ecosistema open source Gator y se construye junto co
 - Una sesión aislada por conexión.
 - Cifrado de aplicación HPKE con X25519, HKDF-SHA-256 y AES-256-GCM.
 - Mensajes directos, difusión y eventos de conexión.
-- Frames de texto, cierre, ping y pong.
+- Frames de texto, cierre, ping y pong; los frames binarios se rechazan con
+  código `1003`.
 - Mensajes y frames limitados a 16 MiB.
 - JAR ejecutable autocontenido.
 
@@ -61,11 +62,20 @@ gappConfigFile=database.properties
 hpkeMaxConnectionsPerKey=500
 hpkeMaxKeyAgeSeconds=86400
 allowedOrigins=https://app.example.com,https://admin.example.com
+maxConnections=1000
+handshakeTimeoutSeconds=30
+authenticationTimeoutSeconds=30
+idleTimeoutSeconds=300
 ```
 
 `allowedOrigins` compara orígenes completos de forma exacta. Si queda vacío,
 rechaza conexiones de navegador pero permite clientes sin `Origin`; `*` acepta
 cualquier origen y solo debe utilizarse en desarrollo.
+
+`maxConnections` limita las sesiones simultáneas. Los tres timeouts controlan,
+respectivamente, cuánto puede tardar el handshake, cuánto tiempo tiene el
+cliente para autenticarse y cuánto puede permanecer inactiva una sesión.
+`idleTimeoutSeconds=0` deshabilita únicamente el timeout de inactividad.
 
 Cuando TLS está habilitado también se requieren:
 
@@ -248,7 +258,8 @@ clients/
 - Las credenciales, claves, nonces y payloads no se escriben en logs.
 - HPKE y AES-GCM agregan confidencialidad, integridad y rechazo de mensajes
   repetidos a nivel de aplicación.
-- El handshake está limitado a 16 KiB y vence después de 30 segundos.
+- El handshake está limitado a 16 KiB; handshake, autenticación e inactividad
+  tienen límites configurables.
 - Este proyecto todavía no ha recibido una auditoría de seguridad independiente.
 
 ## Limitaciones conocidas

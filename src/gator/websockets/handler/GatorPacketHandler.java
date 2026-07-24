@@ -24,10 +24,12 @@ import gator.websockets.exception.WebSocketMaxLengthException;
 import gator.websockets.frames.GatorWSInputFrame;
 import gator.websockets.frames.GatorWSOutputFrame;
 import gator.websockets.helpers.GatorWSProperties;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Stack;
 
 /**
@@ -49,8 +51,6 @@ public class GatorPacketHandler extends GatorWSFrame {
         /**
          * An input frame for store the last frame processed.
          */
-        private GatorWSInputFrame lastFrame;
-        
         /**
          * An stack for frames being processed.
          */
@@ -79,26 +79,15 @@ public class GatorPacketHandler extends GatorWSFrame {
         /**
          * A stack for the data being processed.
          */
-        private final Stack<byte[]> dataStack = new Stack<>();
-        
-        /**
-         * The mask that comes in the frame.
-         */
-        private final ArrayList<Integer> mask = new ArrayList<>();
-                   
-        /**
-         * Flag that tell if this frame is the beginning of a set of fragmented frames.
-         */
-        private boolean messageHasBegin = false;
+        private ByteArrayOutputStream fragmentedData;
+        private boolean fragmentedMessageOpen = false;
+        private boolean fragmentedMessageIsText = false;
+        private boolean currentFrameIsText = false;
         
         private final GappLogging logger = new GappLogging();
         private final GappLog gappLog = new GappLog();
         
         
-        /**
-         * A stack for the data being processed.
-         */
-        private final Stack<Integer> dataLengths = new Stack<>();
         private final GatorWSProperties gatorProps;
         private int protocolErrorCode = 0;
        
@@ -122,26 +111,16 @@ public class GatorPacketHandler extends GatorWSFrame {
                 gappLog.startNewLog("GatorPacketHandler", "fillPacket");
                 if(!framesStack.peek().isFull()) {
                     try {
-                            if(framesStack.peek().isBeginOfMessage()) messageHasBegin = true;
-                            if(framesStack.peek().fillFrame(b)) {                                    
-                                    if(messageHasBegin && framesStack.peek().isFragmented() || !messageHasBegin) {
-                                            if(dataStack.size() > 1) lastData = dataStack.pop();
-                                            if(dataStack.empty()) {
-                                                    dataStack.push(framesStack.peek().getData());
-                                                    dataLengths.push(framesStack.peek().getDataLength());
-                                            } else {
-                                                    byte []temporal = dataStack.pop();
-                                                    int longitudTmp = dataLengths.pop();
-                                                    dataStack.push(framesStack.peek().concatByteArray(temporal, framesStack.peek().getData()));
-                                                    longitudTmp += framesStack.peek().getDataLength();
-                                                    if(longitudTmp > 16 * 1024 * 1024) {
-                                                            throw new WebSocketMaxLengthException("The message exceeds the 16 MiB limit.");
-                                                    }
-                                                    dataLengths.push(longitudTmp);
-                                            }
-                                            if(framesStack.peek().isEndOfMessage()) messageHasBegin = false;
-                                    } else {
-                                            dataStack.push(framesStack.peek().getData());                                            
+                            boolean firstByteWasRead = framesStack.peek().isFirstByteRead();
+                            boolean frameReady = framesStack.peek().fillFrame(b);
+                            if(!firstByteWasRead && framesStack.peek().isFirstByteRead()) {
+                                    validateFrameStart(framesStack.peek());
+                            }
+                            if(frameReady) {
+                                    assembleFrameData(framesStack.peek());
+                                    if(framesStack.peek().isLastFrame() && currentFrameIsText) {
+                                            validateUtf8(lastData);
+                                            if("part".equals(framesStack.peek().getKind())) fragmentedMessageIsText = false;
                                     }
                                     return framesStack.peek().isLastFrame();
                             } else {
@@ -150,24 +129,24 @@ public class GatorPacketHandler extends GatorWSFrame {
                     } catch (WebSocketFormatException ex) {
                             gappLog.addMessage("The message is malformed, so server will close this connection.", 2);
                             gappLog.addMessage(logger.getStackTraceString(ex), 2);
-                            logger.logIt(gappLog, gatorProps.withDebug());
+                            logger.logIt(gappLog, withDebug());
                             protocolErrorCode = ex.getStatusCode();
                             return false;
                     } catch (WebSocketMaxLengthException ex) {
                             gappLog.addMessage("The message has a bigger length than the accepted one.", 2);
                             gappLog.addMessage(logger.getStackTraceString(ex), 2);
-                            logger.logIt(gappLog, gatorProps.withDebug());
+                            logger.logIt(gappLog, withDebug());
                             protocolErrorCode = ex.getStatusCode();
                             return false;
                     } catch (IOException ex) {
                             gappLog.addMessage("Error reading the lenght of the ws frame.", 2);
                             gappLog.addMessage(logger.getStackTraceString(ex), 2);
-                            logger.logIt(gappLog, gatorProps.withDebug());
+                            logger.logIt(gappLog, withDebug());
                             protocolErrorCode = 1002;
                             return false;
                     }
                 } else {
-                        lastFrame = framesStack.pop();
+                        framesStack.pop();
                         framesStack.push(new GatorWSInputFrame(gatorProps));
                         return fillPacket(b);
                 }
@@ -178,23 +157,78 @@ public class GatorPacketHandler extends GatorWSFrame {
          * @return An array of bytes representing the data for this frame.
          */
         public byte[] getFrameData() {
-                byte []data = dataStack.peek();
+                byte []data = lastData;
                 gappLog.startNewLog("GatorPacketHandler", "getFrameData");
-                if(framesStack.peek().isLastFrame()) {
-                        dataStack.pop();
-                } else {
-                        gappLog.addMessage("I am still receiving frames, please wait, til the end.", 2);
-                        logger.logIt(gappLog, gatorProps.withDebug());
-                }
+                lastData = null;
                 frameCount++;
                 String maskNudeBytes = "";
                 for(byte b : framesStack.peek().getMask()) {
                         maskNudeBytes += (b & 0xff) + " ";                        
-                        mask.add(b & 0xff);
                 }
                 gappLog.addMessage("mascara:" + maskNudeBytes, 2);
-                logger.logIt(gappLog, gatorProps.withDebug());
+                logger.logIt(gappLog, withDebug());
                 return data;
+        }
+        private void assembleFrameData(GatorWSInputFrame frame) throws WebSocketMaxLengthException {
+                byte[] frameData = frame.getData();
+                String kind = frame.getKind();
+                if("text".equals(kind) || "binary".equals(kind)) {
+                        if(frame.isLastFrame()) {
+                                lastData = frameData;
+                        } else {
+                                fragmentedData = new ByteArrayOutputStream(Math.min(frameData.length, 16 * 1024));
+                                appendFragment(frameData);
+                        }
+                } else if("part".equals(kind)) {
+                        appendFragment(frameData);
+                        if(frame.isLastFrame()) {
+                                lastData = fragmentedData.toByteArray();
+                                fragmentedData = null;
+                        }
+                } else {
+                        lastData = frameData;
+                }
+        }
+        private void appendFragment(byte[] data) throws WebSocketMaxLengthException {
+                if(fragmentedData == null || fragmentedData.size() > 16 * 1024 * 1024 - data.length) {
+                        throw new WebSocketMaxLengthException("The message exceeds the 16 MiB limit.");
+                }
+                fragmentedData.writeBytes(data);
+        }
+        private void validateFrameStart(GatorWSInputFrame frame) throws WebSocketFormatException {
+                String kind = frame.getKind();
+                currentFrameIsText = false;
+                if("part".equals(kind)) {
+                        if(!fragmentedMessageOpen) {
+                                throw new WebSocketFormatException("Continuation frame received without an open fragmented message");
+                        }
+                        currentFrameIsText = fragmentedMessageIsText;
+                        if(frame.isLastFrame()) fragmentedMessageOpen = false;
+                } else if("binary".equals(kind)) {
+                        throw new WebSocketFormatException("Binary messages are not supported", 1003);
+                } else if("text".equals(kind)) {
+                        if(fragmentedMessageOpen) {
+                                throw new WebSocketFormatException("A new data message cannot start before the fragmented message ends");
+                        }
+                        currentFrameIsText = true;
+                        if(!frame.isLastFrame()) {
+                                fragmentedMessageOpen = true;
+                                fragmentedMessageIsText = currentFrameIsText;
+                        }
+                }
+        }
+        private void validateUtf8(byte[] data) throws WebSocketFormatException {
+                try {
+                        StandardCharsets.UTF_8.newDecoder()
+                                .onMalformedInput(CodingErrorAction.REPORT)
+                                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                .decode(ByteBuffer.wrap(data));
+                } catch(CharacterCodingException e) {
+                        throw new WebSocketFormatException("Text messages must contain valid UTF-8", 1007);
+                }
+        }
+        private boolean withDebug() {
+                return gatorProps != null && gatorProps.withDebug();
         }
         
         /**
@@ -276,8 +310,11 @@ public class GatorPacketHandler extends GatorWSFrame {
          * @return Byte array with frame as described in RFC6455.
          */
         public byte[] pong(String message) {
+                return pong(message.getBytes(StandardCharsets.UTF_8));
+        }
+        public byte[] pong(byte[] message) {
                 outFrame = new GatorWSOutputFrame(GatorWSOutputFrame.PONG);
-                return outFrame.addData(message.getBytes(StandardCharsets.UTF_8));
+                return outFrame.addData(message);
         }                
         
         /**

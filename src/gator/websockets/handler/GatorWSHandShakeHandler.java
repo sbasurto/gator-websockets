@@ -25,8 +25,6 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  *
@@ -78,9 +76,13 @@ public class GatorWSHandShakeHandler {
                     if(linea.matches("GET [/]+ HTTP/1.1")) {
                         setHeader(linea);
                     } else {
-                        Matcher match = Pattern.compile("(.*): (.*)").matcher(linea);                                
-                        if(match.find()) {
-                            addHandShakeData(match.group(1), match.group(2));
+                        int separator = linea.indexOf(':');
+                        if(separator > 0) {
+                            String key = linea.substring(0, separator).trim();
+                            String value = linea.substring(separator + 1).trim();
+                            if(!key.isEmpty() && !value.isEmpty()) {
+                                addHandShakeData(key, value);
+                            }
                         }
                     }
                 }
