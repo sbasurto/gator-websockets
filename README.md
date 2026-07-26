@@ -1,6 +1,8 @@
 # Gator WebSockets
 
-Servidor WebSocket ligero escrito en Java 21. Implementa directamente el handshake y los frames definidos por RFC 6455, autenticación respaldada por PostgreSQL, mensajería directa y difusión de eventos.
+Servidor WebSocket distribuido escrito en Java 21. Implementa directamente el
+handshake y los frames RFC 6455, autenticación JWT/Keycloak, cifrado HPKE y
+entrega persistente coordinada por PostgreSQL.
 
 El servidor forma parte del ecosistema open source Gator y se construye junto con `gator-lib` y `gator-lib-utils`.
 
@@ -13,7 +15,23 @@ El servidor forma parte del ecosistema open source Gator y se construye junto co
 - Frames de texto, cierre, ping y pong; los frames binarios se rechazan con
   código `1003`.
 - Mensajes y frames limitados a 16 MiB.
+- JWT RS256 con issuer, audience, vigencia y JWKS cacheado.
+- Varios nodos con presencia, suscripciones y entregas persistentes.
+- Entrega al menos una vez, ACK e idempotencia por `clientMessageId`.
+- Clientes oficiales para JavaScript, Android e iOS.
+- Métricas, alertas, retención y failover mediante componentes nativos.
 - JAR ejecutable autocontenido.
+
+## Documentación
+
+| Documento | Contenido |
+| --- | --- |
+| [Arquitectura](docs/architecture.md) | Topología, componentes, flujos, garantías y matriz de fallas. |
+| [Despliegue](docs/deployment.md) | PostgreSQL, Keycloak, nodos, HAProxy, TLS y rollback. |
+| [Operación](docs/operations.md) | Métricas, alertas, limpieza, logs y runbooks. |
+| [Seguridad](docs/security.md) | JWT, HPKE, secretos, red, hardening y riesgos. |
+| [Protocolo v2](docs/protocol-v2.md) | Contratos JSON, destinos, ACK, presencia y errores. |
+| [Clientes](clients/README.md) | JavaScript, Android e iOS. |
 
 ## Requisitos
 
@@ -66,7 +84,23 @@ maxConnections=1000
 handshakeTimeoutSeconds=30
 authenticationTimeoutSeconds=30
 idleTimeoutSeconds=300
+realtimeEnabled=false
+realtimeDbConfigFile=indexRealtime
+tenantId=default
+applicationId=gator
+serverHeartbeatSeconds=10
+serverLeaseSeconds=30
+jwtIssuer=https://auth.example.com/realms/gator
+jwtAudience=gator-websockets
+jwtJwksUri=https://auth.example.com/realms/gator/protocol/openid-connect/certs
+jwtClockSkewSeconds=30
+jwtJwksCacheSeconds=300
 ```
+
+El protocolo distribuido v2 es opcional durante la migración. Al habilitarlo,
+todos los servidores deben apuntar a la misma base preparada con
+`deploy/realtime.sql`. Consulta la [arquitectura](docs/architecture.md) y el
+[contrato v2](docs/protocol-v2.md).
 
 `allowedOrigins` compara orígenes completos de forma exacta. Si queda vacío,
 rechaza conexiones de navegador pero permite clientes sin `Origin`; `*` acepta
@@ -175,8 +209,7 @@ El texto cifrado contiene el mensaje de autenticación completo:
 ```json
 {
   "type": "authenticateme",
-  "message": "passphrase",
-  "data": { "usuario": "usuario-id" }
+  "message": "access-token-jwt"
 }
 ```
 
@@ -223,6 +256,10 @@ El modelo JSON principal se encuentra en `GatorWSMessage` y utiliza, entre otros
 
 ## Integración con PostgreSQL
 
+Con `jwtIssuer` configurado, el servidor autentica con JWT y obtiene la
+identidad del claim `sub`. Sin esa configuración conserva temporalmente la
+autenticación heredada mediante `app_fn_authenticate_ws`.
+
 La aplicación espera que la capa de base de datos proporcione estos procedimientos almacenados:
 
 - `app_fn_authenticate_ws`
@@ -264,9 +301,11 @@ clients/
 
 ## Limitaciones conocidas
 
-- Incluir el esquema y los procedimientos de PostgreSQL.
-- Agregar configuraciones de ejemplo independientes de infraestructura privada.
-- Añadir pruebas end-to-end contra un servidor y PostgreSQL en ejecución.
+- PostgreSQL y Keycloak siguen siendo dependencias únicas en Artemisa.
+- La aplicación cliente debe cambiar al endpoint secundario; las librerías no
+  seleccionan automáticamente otra URL.
+- TLS hacia backends cifra el tráfico pero actualmente usa `verify none` dentro
+  de la VPN.
 
 ## Contribuciones
 

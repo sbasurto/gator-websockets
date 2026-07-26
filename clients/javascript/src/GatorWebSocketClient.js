@@ -4,6 +4,7 @@ export class GatorWebSocketClient {
   #socket;
   #session;
   #authenticated = false;
+  #seenMessageIds = new Set();
   #receiveQueue = Promise.resolve();
   #sendQueue = Promise.resolve();
 
@@ -14,7 +15,7 @@ export class GatorWebSocketClient {
     this.onState = onState;
   }
 
-  connect(usuario, passphrase) {
+  connect(accessToken) {
     if (this.#socket) throw new Error("Client is already connected");
     return new Promise((resolve, reject) => {
       this.#socket = new WebSocket(this.url);
@@ -26,12 +27,10 @@ export class GatorWebSocketClient {
             if (message.type !== "askauth") throw new Error("Expected HPKE key offer");
             this.#session = await createGatorSession(message, {
               type: "authenticateme",
-              message: passphrase,
-              data: { usuario },
+              message: accessToken,
             });
             this.#socket.send(this.#session.initialEnvelope);
-            usuario = undefined;
-            passphrase = undefined;
+            accessToken = undefined;
             return;
           }
           message = JSON.parse(await this.#session.open(data));
@@ -42,6 +41,13 @@ export class GatorWebSocketClient {
           } else if (message.type === "forcedclosure") {
             reject(new Error(message.estatusDesc || "Connection rejected"));
             this.close();
+          } else if (message.v === 2 && message.op === "message") {
+            if (typeof message.messageId !== "string" || !message.messageId) throw new Error("Invalid v2 message");
+            const duplicate = this.#seenMessageIds.has(message.messageId);
+            this.#seenMessageIds.add(message.messageId);
+            if (this.#seenMessageIds.size > 1024) this.#seenMessageIds.delete(this.#seenMessageIds.values().next().value);
+            await this.ack(message.messageId);
+            if (!duplicate) this.onMessage(message);
           } else if (message.type === "event") {
             this.onEvent(message);
           } else {
@@ -57,6 +63,7 @@ export class GatorWebSocketClient {
         this.#authenticated = false;
         this.#socket = undefined;
         this.#session = undefined;
+        this.#seenMessageIds.clear();
         this.onState("closed");
       };
     });
@@ -69,6 +76,26 @@ export class GatorWebSocketClient {
     });
     this.#sendQueue = operation.catch(() => this.close(1002, "Cannot send encrypted message"));
     return operation;
+  }
+
+  publish(kind, ids, payload, clientMessageId = crypto.randomUUID()) {
+    return this.send({ v: 2, op: "publish", clientMessageId, target: { kind, ids }, payload });
+  }
+
+  subscribe(topics) {
+    return this.send({ v: 2, op: "subscribe", topics });
+  }
+
+  unsubscribe(topics) {
+    return this.send({ v: 2, op: "unsubscribe", topics });
+  }
+
+  ack(messageId) {
+    return this.send({ v: 2, op: "ack", messageId, status: "delivered" });
+  }
+
+  presence() {
+    return this.send({ v: 2, op: "presence" });
   }
 
   close(code = 1000, reason = "") {

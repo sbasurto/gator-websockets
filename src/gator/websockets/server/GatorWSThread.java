@@ -28,6 +28,7 @@ import gator.websockets.handler.data.GatorWSUsuario;
 import gator.websockets.helpers.GatorWSProperties;
 import gator.websockets.helpers.GatorWSSecurity;
 import gator.websockets.helpers.GatorWSKeyManager;
+import gator.websockets.helpers.GatorJWTVerifier;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,6 +38,8 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;
+import gator.websockets.realtime.GatorRealtimeCoordinator;
+import java.util.UUID;
 
 /**
  *
@@ -58,10 +61,12 @@ public class GatorWSThread extends Thread {
         private final GatorWSProperties gatorProps;
         private volatile boolean authenticated = false;
         private final GatorWSSecurity gatorSecurity;
+        private final GatorRealtimeCoordinator realtime;
         private volatile boolean closeMe = false;
         
         public GatorWSThread(Socket _socket, CopyOnWriteArrayList<GatorWSThread> _threadList,
-                GatorWSProperties _gatorProps, GatorWSKeyManager keyManager) {
+                GatorWSProperties _gatorProps, GatorWSKeyManager keyManager, GatorRealtimeCoordinator realtime,
+                GatorJWTVerifier jwtVerifier) {
                 socket = _socket;
                 threadList = _threadList;
                 logger = new GappLogging();
@@ -73,13 +78,14 @@ public class GatorWSThread extends Thread {
                 gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets " + gatorProps.getInetAddress());
                 packetHandler = new GatorPacketHandler(gatorProps);
-                gatorSecurity = new GatorWSSecurity(gatorProps, keyManager.acquire());
-                msgHandler = new GatorWSMessageHandler(gatorProps, gatorSecurity);
+                gatorSecurity = new GatorWSSecurity(gatorProps, keyManager.acquire(), jwtVerifier);
+                this.realtime = realtime;
+                msgHandler = new GatorWSMessageHandler(gatorProps, gatorSecurity, realtime);
                 setMyId();
                 gatorProps.setId(getMyId());
         }
         private void setMyId() {
-                myId = "WSS" + gappDateFactory.getDateForId();
+                myId = UUID.randomUUID().toString();
         }
         private String getMyId() {
                 return myId;
@@ -156,6 +162,7 @@ public class GatorWSThread extends Thread {
                         gappLog.addMessage(logger.getStackTraceString(e), 2);
 			logger.logIt(gappLog, gatorProps.withDebug());
 		} finally {
+                        if(realtime != null) realtime.disconnected(connectionId(), "socket_closed");
                         threadList.remove(this);
                         try {
                                 socket.close();
@@ -251,6 +258,7 @@ public class GatorWSThread extends Thread {
         private void processResponses(OutputStream output) throws IOException {
             gappLog.startNewLog("GatorWSThread", "processResponses");
             if(msgHandler.hasResponse()) {
+                for(String response: msgHandler.getRawResponses()) sendMessage(output, response);
                 for(GatorWSMessage msg: msgHandler.getResponseMsgs()) {
                     if(msg.getType().equals("forcedclosure")) {                        
                         sendMessage(output, msgHandler.getResponseMsgAsString(msg));
@@ -260,7 +268,13 @@ public class GatorWSThread extends Thread {
                             sendMessage(output, msgHandler.getResponseMsgAsString(msg));
                             if(msg.getType().equals("authsuccess")) {
                                 setAuthenticated(msgHandler.successfulAuth());
-                                if(amIAuthenticated()) socket.setSoTimeout(gatorProps.getIdleTimeoutMillis());
+                                if(amIAuthenticated()) {
+                                        socket.setSoTimeout(gatorProps.getIdleTimeoutMillis());
+                                        if(realtime != null) {
+                                                try { realtime.connected(connectionId(), gatorSecurity.getUserId()); }
+                                                catch(Exception error) { throw new IOException("Cannot register realtime connection", error); }
+                                        }
+                                }
                             }
                         }
                         if(msg.isForAll()) {
@@ -317,5 +331,21 @@ public class GatorWSThread extends Thread {
                 gappLog.addMessage(logger.getStackTraceString(e), 2);                         
                 logger.logIt(gappLog, gatorProps.withDebug());
             }
+        }
+        public boolean matchesConnection(UUID connectionId) {
+                return myId.equals(connectionId.toString());
+        }
+        public boolean deliverRealtime(String envelope) {
+                if(!isAlive() || !amIAuthenticated() || closeMe()) return false;
+                try {
+                        sendMessage(socket.getOutputStream(), envelope);
+                        return !closeMe();
+                } catch(Exception error) {
+                        setCloseMe(true);
+                        return false;
+                }
+        }
+        private UUID connectionId() {
+                return UUID.fromString(myId);
         }
 }

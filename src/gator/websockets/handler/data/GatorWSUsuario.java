@@ -27,7 +27,6 @@ import java.util.ArrayList;
 public class GatorWSUsuario {
         private String rowid;       
         private String usuario_id;
-        private String usuario_password;
         private String usuario_nombre;
         private String usuario_estado;
         private String usuario_cargo;
@@ -49,9 +48,6 @@ public class GatorWSUsuario {
         public String getId() {
                 return this.usuario_id;
         }        
-        public String getPassword() {
-                return this.usuario_password;
-        }
         public void setNombre(String nombre) {
                 this.usuario_nombre = nombre;
         }

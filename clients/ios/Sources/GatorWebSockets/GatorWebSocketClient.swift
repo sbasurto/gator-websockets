@@ -39,9 +39,10 @@ public final class GatorWebSocketClient: @unchecked Sendable {
     private var storedState: State = .idle
     private var transport: GatorWebSocketTransport?
     private var session: GatorProtocol.Session?
-    private var usuario: String?
-    private var passphrase: String?
+    private var accessToken: String?
     private var keepAliveTimer: DispatchSourceTimer?
+    private var seenMessageIds = Set<String>()
+    private var seenMessageOrder: [String] = []
 
     public convenience init(
         url: URL,
@@ -69,7 +70,7 @@ public final class GatorWebSocketClient: @unchecked Sendable {
         self.transportFactory = transportFactory
     }
 
-    public func connect(usuario: String, passphrase: String) {
+    public func connect(accessToken: String) {
         queue.async {
             guard self.transport == nil else {
                 self.report(ClientError.alreadyConnected)
@@ -81,8 +82,7 @@ public final class GatorWebSocketClient: @unchecked Sendable {
                 return
             }
 
-            self.usuario = usuario
-            self.passphrase = passphrase
+            self.accessToken = accessToken
             let transport = self.transportFactory()
             self.transport = transport
             self.transition(to: .connecting)
@@ -124,6 +124,41 @@ public final class GatorWebSocketClient: @unchecked Sendable {
         }
     }
 
+    public func publish(
+        kind: String,
+        ids: [String],
+        payload: [String: Any],
+        clientMessageId: UUID = UUID(),
+        completion: @escaping (Result<Void, Error>) -> Void = { _ in }
+    ) {
+        send([
+            "v": 2, "op": "publish", "clientMessageId": clientMessageId.uuidString.lowercased(),
+            "target": ["kind": kind, "ids": ids], "payload": payload
+        ], completion: completion)
+    }
+
+    public func subscribe(
+        _ topics: [String], completion: @escaping (Result<Void, Error>) -> Void = { _ in }
+    ) {
+        send(["v": 2, "op": "subscribe", "topics": topics], completion: completion)
+    }
+
+    public func unsubscribe(
+        _ topics: [String], completion: @escaping (Result<Void, Error>) -> Void = { _ in }
+    ) {
+        send(["v": 2, "op": "unsubscribe", "topics": topics], completion: completion)
+    }
+
+    public func ack(
+        _ messageId: String, completion: @escaping (Result<Void, Error>) -> Void = { _ in }
+    ) {
+        send(["v": 2, "op": "ack", "messageId": messageId, "status": "delivered"], completion: completion)
+    }
+
+    public func presence(completion: @escaping (Result<Void, Error>) -> Void = { _ in }) {
+        send(["v": 2, "op": "presence"], completion: completion)
+    }
+
     public func close(code: URLSessionWebSocketTask.CloseCode = .normalClosure, reason: String = "") {
         queue.async {
             self.transport?.cancel(code: code, reason: Self.closeReason(reason))
@@ -161,14 +196,13 @@ public final class GatorWebSocketClient: @unchecked Sendable {
                   data["suite"] as? String == GatorProtocol.suite,
                   let keyId = data["keyId"] as? String, !keyId.isEmpty,
                   let publicKey = offer["keyForAuth"] as? String,
-                  let usuario, let passphrase else {
+                  let accessToken else {
                 throw GatorProtocol.ProtocolError.unsupportedSuite
             }
 
             let authentication = try JSONSerialization.data(withJSONObject: [
                 "type": "authenticateme",
-                "message": passphrase,
-                "data": ["usuario": usuario]
+                "message": accessToken
             ])
             let session = try GatorProtocol.start(
                 keyId: keyId,
@@ -176,8 +210,7 @@ public final class GatorWebSocketClient: @unchecked Sendable {
                 authentication: authentication
             )
             self.session = session
-            self.usuario = nil
-            self.passphrase = nil
+            self.accessToken = nil
             transition(to: .authenticating)
             transport?.send(text: session.initialEnvelope) { [weak self] error in
                 guard let error, let self else { return }
@@ -187,6 +220,25 @@ public final class GatorWebSocketClient: @unchecked Sendable {
         }
 
         let message = try Self.jsonObject(try session!.open(text))
+        if message["v"] as? Int == 2, message["op"] as? String == "message" {
+            guard let messageId = message["messageId"] as? String, !messageId.isEmpty else {
+                throw ClientError.invalidJSON
+            }
+            let duplicate = seenMessageIds.contains(messageId)
+            if !duplicate {
+                seenMessageIds.insert(messageId)
+                seenMessageOrder.append(messageId)
+                if seenMessageOrder.count > 1024 {
+                    seenMessageIds.remove(seenMessageOrder.removeFirst())
+                }
+            }
+            ack(messageId)
+            if !duplicate {
+                let message = UncheckedSendable(message)
+                callbackQueue.async { [weak self] in self?.onMessage(message.value) }
+            }
+            return
+        }
         switch message["type"] as? String {
         case "authsuccess":
             transition(to: .authenticated)
@@ -243,8 +295,9 @@ public final class GatorWebSocketClient: @unchecked Sendable {
         keepAliveTimer = nil
         session = nil
         transport = nil
-        usuario = nil
-        passphrase = nil
+        accessToken = nil
+        seenMessageIds.removeAll()
+        seenMessageOrder.removeAll()
         transition(to: .closed)
     }
 

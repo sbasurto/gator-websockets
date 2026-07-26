@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+db_host=${WS_DB_HOST:-127.0.0.1}
+db_user=${WS_DB_USER:-w3apps}
+db_name=${WS_DB_NAME:-db_wmssoft}
+psql=(psql -X -q -h "$db_host" -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -At)
+
+cleanup=$("${psql[@]}" -c "select ws_cleanup();")
+metrics=$("${psql[@]}" -c "select coalesce(jsonb_agg(to_jsonb(m)),'[]') from ws_metrics m;")
+logger -t gator-websockets-metrics -p daemon.info -- "{\"cleanup\":$cleanup,\"metrics\":$metrics}"
+
+alerts=$("${psql[@]}" -F ': ' -c "select alert,detail from ws_alerts;")
+if [[ -n $alerts ]]; then
+  logger -t gator-websockets-alert -p daemon.warning -- "$alerts"
+  exit 1
+fi

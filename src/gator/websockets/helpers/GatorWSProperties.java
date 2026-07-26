@@ -44,6 +44,17 @@ public class GatorWSProperties {
         private final int handshakeTimeoutMillis;
         private final int authenticationTimeoutMillis;
         private final int idleTimeoutMillis;
+        private final boolean realtimeEnabled;
+        private final String realtimeDbConfigurationFile;
+        private final String tenantId;
+        private final String applicationId;
+        private final int serverHeartbeatSeconds;
+        private final int serverLeaseSeconds;
+        private final String jwtIssuer;
+        private final String jwtAudience;
+        private final String jwtJwksUri;
+        private final int jwtClockSkewSeconds;
+        private final int jwtJwksCacheSeconds;
         private String id;
         private String inetAddress;
         private final GappLogging logger;
@@ -60,7 +71,7 @@ public class GatorWSProperties {
                         gappLog.addMessage(logger.getStackTraceString(e), 2); 
                         logger.logIt(gappLog, true);
                 }
-                port = Integer.parseInt(appProps.getProperty("port"));
+                port = Integer.parseInt(System.getenv().getOrDefault("GATOR_WS_PORT", appProps.getProperty("port")));
                 debug = Boolean.parseBoolean(appProps.getProperty("withDebug"));
                 ssl = Boolean.parseBoolean(appProps.getProperty("withSSL"));
                 dbConfigurationFile = appProps.getProperty("gappConfigFile");
@@ -72,6 +83,24 @@ public class GatorWSProperties {
                 handshakeTimeoutMillis = positiveSecondsAsMillis("handshakeTimeoutSeconds", 30, false);
                 authenticationTimeoutMillis = positiveSecondsAsMillis("authenticationTimeoutSeconds", 30, false);
                 idleTimeoutMillis = positiveSecondsAsMillis("idleTimeoutSeconds", 300, true);
+                realtimeEnabled = Boolean.parseBoolean(appProps.getProperty("realtimeEnabled", "false"));
+                realtimeDbConfigurationFile = appProps.getProperty("realtimeDbConfigFile", dbConfigurationFile);
+                tenantId = requiredWhenRealtime("tenantId", "default");
+                applicationId = requiredWhenRealtime("applicationId", "gator");
+                serverHeartbeatSeconds = positiveInt("serverHeartbeatSeconds", 10);
+                serverLeaseSeconds = positiveInt("serverLeaseSeconds", 30);
+                if(serverLeaseSeconds <= serverHeartbeatSeconds) {
+                        throw new IllegalArgumentException("serverLeaseSeconds must exceed serverHeartbeatSeconds");
+                }
+                jwtIssuer = appProps.getProperty("jwtIssuer", "").trim();
+                jwtAudience = appProps.getProperty("jwtAudience", "").trim();
+                if(!jwtIssuer.isEmpty() && jwtAudience.isEmpty()) {
+                        throw new IllegalArgumentException("jwtAudience is required when jwtIssuer is configured");
+                }
+                jwtJwksUri = appProps.getProperty("jwtJwksUri",
+                        jwtIssuer.isEmpty() ? "" : jwtIssuer + "/protocol/openid-connect/certs").trim();
+                jwtClockSkewSeconds = positiveInt("jwtClockSkewSeconds", 30);
+                jwtJwksCacheSeconds = positiveInt("jwtJwksCacheSeconds", 300);
                 if(ssl && debug) System.setProperty("javax.net.debug", "ssl");
         }
         public GatorWSProperties(GatorWSProperties source) {
@@ -88,6 +117,17 @@ public class GatorWSProperties {
                 handshakeTimeoutMillis = source.handshakeTimeoutMillis;
                 authenticationTimeoutMillis = source.authenticationTimeoutMillis;
                 idleTimeoutMillis = source.idleTimeoutMillis;
+                realtimeEnabled = source.realtimeEnabled;
+                realtimeDbConfigurationFile = source.realtimeDbConfigurationFile;
+                tenantId = source.tenantId;
+                applicationId = source.applicationId;
+                serverHeartbeatSeconds = source.serverHeartbeatSeconds;
+                serverLeaseSeconds = source.serverLeaseSeconds;
+                jwtIssuer = source.jwtIssuer;
+                jwtAudience = source.jwtAudience;
+                jwtJwksUri = source.jwtJwksUri;
+                jwtClockSkewSeconds = source.jwtClockSkewSeconds;
+                jwtJwksCacheSeconds = source.jwtJwksCacheSeconds;
         }
         public int getPort() {
                 return port;
@@ -122,6 +162,42 @@ public class GatorWSProperties {
         public int getIdleTimeoutMillis() {
                 return idleTimeoutMillis;
         }
+        public boolean realtimeEnabled() {
+                return realtimeEnabled;
+        }
+        public String getRealtimeDbConfigurationFile() {
+                return realtimeDbConfigurationFile;
+        }
+        public String getTenantId() {
+                return tenantId;
+        }
+        public String getApplicationId() {
+                return applicationId;
+        }
+        public int getServerHeartbeatSeconds() {
+                return serverHeartbeatSeconds;
+        }
+        public int getServerLeaseSeconds() {
+                return serverLeaseSeconds;
+        }
+        public boolean jwtEnabled() {
+                return !jwtIssuer.isEmpty();
+        }
+        public String getJwtIssuer() {
+                return jwtIssuer;
+        }
+        public String getJwtAudience() {
+                return jwtAudience;
+        }
+        public String getJwtJwksUri() {
+                return jwtJwksUri;
+        }
+        public int getJwtClockSkewSeconds() {
+                return jwtClockSkewSeconds;
+        }
+        public int getJwtJwksCacheSeconds() {
+                return jwtJwksCacheSeconds;
+        }
         public String getId() {
                 return id;
         }
@@ -153,5 +229,10 @@ public class GatorWSProperties {
                         throw new IllegalArgumentException(property + " has an invalid value");
                 }
                 return Math.toIntExact(seconds * 1000L);
+        }
+        private String requiredWhenRealtime(String property, String defaultValue) {
+                String value = appProps.getProperty(property, defaultValue).trim();
+                if(realtimeEnabled && value.isEmpty()) throw new IllegalArgumentException(property + " is required");
+                return value;
         }
 }

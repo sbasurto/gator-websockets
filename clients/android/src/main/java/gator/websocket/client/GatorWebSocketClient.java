@@ -3,6 +3,10 @@ package gator.websocket.client;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.security.GeneralSecurityException;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -17,9 +21,9 @@ public final class GatorWebSocketClient extends WebSocketListener {
     private final Listener listener;
     private WebSocket socket;
     private GatorProtocol.Session session;
-    private String usuario;
-    private String passphrase;
+    private String accessToken;
     private boolean authenticated;
+    private final Set<String> seenMessageIds = new LinkedHashSet<>();
 
     public GatorWebSocketClient(String url, Listener listener) {
         this(new OkHttpClient(), url, listener);
@@ -31,10 +35,9 @@ public final class GatorWebSocketClient extends WebSocketListener {
         this.listener = listener;
     }
 
-    public synchronized void connect(String usuario, String passphrase) {
+    public synchronized void connect(String accessToken) {
         if (socket != null) throw new IllegalStateException("Client is already connected");
-        this.usuario = usuario;
-        this.passphrase = passphrase;
+        this.accessToken = accessToken;
         socket = httpClient.newWebSocket(new Request.Builder().url(url).build(), this);
     }
 
@@ -48,6 +51,40 @@ public final class GatorWebSocketClient extends WebSocketListener {
             fail(error);
             return false;
         }
+    }
+
+    public boolean publish(String kind, List<String> ids, JsonObject payload) {
+        JsonObject target = new JsonObject();
+        target.addProperty("kind", kind);
+        target.add("ids", GSON.toJsonTree(ids));
+        JsonObject message = operation("publish");
+        message.addProperty("clientMessageId", UUID.randomUUID().toString());
+        message.add("target", target);
+        message.add("payload", payload);
+        return send(message);
+    }
+
+    public boolean subscribe(List<String> topics) {
+        JsonObject message = operation("subscribe");
+        message.add("topics", GSON.toJsonTree(topics));
+        return send(message);
+    }
+
+    public boolean unsubscribe(List<String> topics) {
+        JsonObject message = operation("unsubscribe");
+        message.add("topics", GSON.toJsonTree(topics));
+        return send(message);
+    }
+
+    public boolean ack(String messageId) {
+        JsonObject message = operation("ack");
+        message.addProperty("messageId", messageId);
+        message.addProperty("status", "delivered");
+        return send(message);
+    }
+
+    public boolean presence() {
+        return send(operation("presence"));
     }
 
     public synchronized void close() {
@@ -76,26 +113,30 @@ public final class GatorWebSocketClient extends WebSocketListener {
                 }
                 JsonObject authentication = new JsonObject();
                 authentication.addProperty("type", "authenticateme");
-                authentication.addProperty("message", passphrase);
-                JsonObject authenticationData = new JsonObject();
-                authenticationData.addProperty("usuario", usuario);
-                authentication.add("data", authenticationData);
+                authentication.addProperty("message", accessToken);
                 session = GatorProtocol.start(string(data, "keyId"), string(message, "keyForAuth"),
                         GSON.toJson(authentication));
                 if (!webSocket.send(session.initialEnvelope)) {
                     throw new GeneralSecurityException("Cannot send encrypted authentication");
                 }
-                usuario = null;
-                passphrase = null;
+                accessToken = null;
                 return;
             }
-            String type = string(message, "type");
+            String type = message.has("type") && !message.get("type").isJsonNull()
+                    ? message.get("type").getAsString() : null;
             if ("authsuccess".equals(type)) {
                 authenticated = true;
                 listener.onState("authenticated");
             } else if ("forcedclosure".equals(type)) {
                 listener.onError(new GeneralSecurityException(string(message, "estatusDesc")));
                 webSocket.close(1002, "Connection rejected");
+            } else if (message.has("v") && message.get("v").getAsInt() == 2
+                    && "message".equals(string(message, "op"))) {
+                String messageId = string(message, "messageId");
+                boolean duplicate = !seenMessageIds.add(messageId);
+                if (seenMessageIds.size() > 1024) seenMessageIds.remove(seenMessageIds.iterator().next());
+                ack(messageId);
+                if (!duplicate) listener.onMessage(message);
             } else if ("event".equals(type)) {
                 listener.onEvent(message);
             } else {
@@ -111,8 +152,8 @@ public final class GatorWebSocketClient extends WebSocketListener {
         authenticated = false;
         session = null;
         socket = null;
-        usuario = null;
-        passphrase = null;
+        accessToken = null;
+        seenMessageIds.clear();
         listener.onState("closed");
     }
 
@@ -121,8 +162,8 @@ public final class GatorWebSocketClient extends WebSocketListener {
         authenticated = false;
         session = null;
         socket = null;
-        usuario = null;
-        passphrase = null;
+        accessToken = null;
+        seenMessageIds.clear();
         listener.onError(error);
         listener.onState("closed");
     }
@@ -137,6 +178,13 @@ public final class GatorWebSocketClient extends WebSocketListener {
             throw new GeneralSecurityException("Missing " + name);
         }
         return object.get(name).getAsString();
+    }
+
+    private static JsonObject operation(String operation) {
+        JsonObject message = new JsonObject();
+        message.addProperty("v", 2);
+        message.addProperty("op", operation);
+        return message;
     }
 
     public interface Listener {

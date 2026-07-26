@@ -27,6 +27,8 @@ import gator.websockets.handler.data.GatorWSUsuario;
 import gator.websockets.helpers.GatorWSProperties;
 import gator.websockets.helpers.GatorWSSecurity;
 import java.util.ArrayList;
+import gator.websockets.realtime.GatorRealtimeCoordinator;
+import java.util.UUID;
 
 /**
  *
@@ -43,17 +45,21 @@ public class GatorWSMessageHandler {
           * The response for last message processed.
           */
         private final ArrayList<GatorWSMessage> responseMsgs = new ArrayList<>();
+        private final ArrayList<String> rawResponses = new ArrayList<>();
         /**
          * Flag to tell if last message processed has a response.
          */
         private boolean hasResponse = false;
         private ArrayList<GatorWSUsuario> usuarios = new ArrayList<>();
+        private final GatorRealtimeCoordinator realtime;
         
-        public GatorWSMessageHandler(GatorWSProperties _gatorProps, GatorWSSecurity _gatorSecurity) {
+        public GatorWSMessageHandler(GatorWSProperties _gatorProps, GatorWSSecurity _gatorSecurity,
+                GatorRealtimeCoordinator realtime) {
                 gatorProps = _gatorProps;
                 logger = new GappLogging();
 		gappLog = new GappLog();
                 gatorSecurity = _gatorSecurity;
+                this.realtime = realtime;
                 gappLog.setFileToLog("websocket");                        
 	    	gappLog.setName("websockets " + gatorProps.getInetAddress());
         }
@@ -77,6 +83,14 @@ public class GatorWSMessageHandler {
                     }
                 } else if(isAuth) {
                         setForceClosure(new GatorWSMessage(), "Encrypted message required");
+                        return;
+                }
+                if(isAuth && realtime != null && GatorRealtimeCoordinator.isV2(message)) {
+                        GatorRealtimeCoordinator.Principal principal = new GatorRealtimeCoordinator.Principal(
+                                gatorProps.getTenantId(), gatorProps.getApplicationId(), gatorSecurity.getUserId(),
+                                UUID.fromString(gatorProps.getId()), gatorSecurity.getScopes());
+                        rawResponses.add(realtime.handle(message, principal));
+                        hasResponse = true;
                         return;
                 }
                 GatorWSMessage wsMsg;
@@ -134,12 +148,20 @@ public class GatorWSMessageHandler {
                 if((authenticated = gatorSecurity.authenticate(wsMsg))) {                                                
                         GatorWSMessage responseMsg = new GatorWSMessage();                                
                         responseMsg.setType("authsuccess");                                
-                        responseMsg.setStatus("success", "Authentication successful");                        
+                        responseMsg.setStatus("success", "Authentication successful");
+                        responseMsg.addData("authentication", gatorSecurity.usesJwt() ? "jwt" : "legacy");
+                        if(realtime != null) {
+                                responseMsg.addData("connectionId", gatorProps.getId());
+                                responseMsg.addData("serverId", realtime.serverId().toString());
+                                responseMsg.addData("tenantId", gatorProps.getTenantId());
+                                responseMsg.addData("applicationId", gatorProps.getApplicationId());
+                                responseMsg.addData("userId", gatorSecurity.getUserId());
+                        }
                         responseMsgs.add(responseMsg);
                         responseMsg = new GatorWSMessage();
                         responseMsg.setType("event");                                                
                         responseMsg.setMessage("gatorwsuserconn");
-                        responseMsg.addUsuario(gatorSecurity.getAuthResponse().getUsuario());
+                        responseMsg.addUsuario(authenticatedUser());
                         responseMsg.toAll();
                         responseMsg.itHasNotReceiver();
                         responseMsgs.add(responseMsg);
@@ -216,7 +238,7 @@ public class GatorWSMessageHandler {
                 JsonObject jsonObj = new JsonObject();
                 jsonObj.addProperty("id", gatorProps.getId());
                 jsonObj.addProperty("ipAddr", gatorProps.getInetAddress());
-                jsonObj.addProperty("usuario", gatorSecurity.getAuthResponse().getUsuario().getId());
+                jsonObj.addProperty("usuario", gatorSecurity.getUserId());
                 GappDBHelper helper = new GappDBHelper(gatorProps.getConfigFile());
                 GappSQLStatement gappSQLStmt = new GappSQLStatement();
                 gappSQLStmt.setStoreProcedure("app_fn_get_usuarios_ws");
@@ -241,8 +263,8 @@ public class GatorWSMessageHandler {
          */
         public void createEnvelopeTo(GatorWSMessage wsMsg) {
                 GatorWSUsuario usuario = new GatorWSUsuario();
-                usuario.setId(gatorSecurity.getAuthResponse().getUsuario().getId());
-                usuario.setNombre(gatorSecurity.getAuthResponse().getUsuario().getNombre());
+                usuario.setId(gatorSecurity.getUserId());
+                usuario.setNombre(gatorSecurity.getName());
                 GatorWSMessage responseMsg = sendMessageDataBase(wsMsg);                                
                 responseMsg.setReceivers(wsMsg.getReceivers());
                 responseMsg.addUsuario(usuario);
@@ -260,7 +282,7 @@ public class GatorWSMessageHandler {
                 JsonObject jsonObj = new JsonObject();
                 jsonObj.addProperty("id", gatorProps.getId());
                 jsonObj.addProperty("ipAddr", gatorProps.getInetAddress());
-                jsonObj.addProperty("usuario", gatorSecurity.getAuthResponse().getUsuario().getId());
+                jsonObj.addProperty("usuario", gatorSecurity.getUserId());
                 jsonObj.addProperty("message", gson.toJson(wsMsg));
                 GappDBHelper helper = new GappDBHelper(gatorProps.getConfigFile());
                 GappSQLStatement gappSQLStmt = new GappSQLStatement();
@@ -280,8 +302,8 @@ public class GatorWSMessageHandler {
                 gappLog.startNewLog("GatorWSMessageHandler", "createEnvelopeToAll");                 
                 
                 GatorWSUsuario usuario = new GatorWSUsuario();
-                usuario.setId(gatorSecurity.getAuthResponse().getUsuario().getId());
-                usuario.setNombre(gatorSecurity.getAuthResponse().getUsuario().getNombre());
+                usuario.setId(gatorSecurity.getUserId());
+                usuario.setNombre(gatorSecurity.getName());
                 GatorWSMessage responseMsg = sendMessageDataBase(wsMsg);
                 responseMsg.addUsuario(usuario);
                 responseMsg.toAll();
@@ -293,6 +315,10 @@ public class GatorWSMessageHandler {
          */
         public void clearResponseMsgs() {
                 responseMsgs.clear();
+                rawResponses.clear();
+        }
+        public ArrayList<String> getRawResponses() {
+                return rawResponses;
         }
         /**
          * Allows to prepare the package with the event of 
@@ -302,8 +328,8 @@ public class GatorWSMessageHandler {
         public void createDisconnectMessage() {                
                 GatorWSMessage responseMsg = new GatorWSMessage();
                 GatorWSUsuario usuario = new GatorWSUsuario();
-                usuario.setId(gatorSecurity.getAuthResponse().getUsuario().getId());
-                usuario.setNombre(gatorSecurity.getAuthResponse().getUsuario().getNombre());
+                usuario.setId(gatorSecurity.getUserId());
+                usuario.setNombre(gatorSecurity.getName());
                 responseMsg.setType("event");
                 responseMsg.setMessage("gatorwsuserdisconn");
                 responseMsg.addUsuario(usuario);
@@ -325,8 +351,8 @@ public class GatorWSMessageHandler {
         public void createEventToAll(GatorWSMessage wsMsg) {                
                 GatorWSMessage responseMsg = new GatorWSMessage();
                 GatorWSUsuario usuario = new GatorWSUsuario();
-                usuario.setId(gatorSecurity.getAuthResponse().getUsuario().getId());
-                usuario.setNombre(gatorSecurity.getAuthResponse().getUsuario().getNombre());
+                usuario.setId(gatorSecurity.getUserId());
+                usuario.setNombre(gatorSecurity.getName());
                 responseMsg.setType("event");
                 responseMsg.setMessage(wsMsg.getMessage());
                 responseMsg.setData(wsMsg.getData());
@@ -334,5 +360,11 @@ public class GatorWSMessageHandler {
                 responseMsg.toAll();
                 responseMsgs.add(responseMsg);                
                 hasResponse = true;
+        }
+        private GatorWSUsuario authenticatedUser() {
+                GatorWSUsuario user = new GatorWSUsuario();
+                user.setId(gatorSecurity.getUserId());
+                user.setNombre(gatorSecurity.getName());
+                return user;
         }
 }

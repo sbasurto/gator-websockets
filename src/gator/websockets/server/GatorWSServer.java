@@ -33,6 +33,9 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
+import gator.websockets.realtime.GatorRealtimeCoordinator;
+import gator.websockets.helpers.GatorJWTVerifier;
+import java.util.UUID;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocket;
@@ -52,6 +55,9 @@ public class GatorWSServer {
 	private final GappDateFactory gappDateFactory;
         private final GatorWSProperties gatorProps;
         private final GatorWSKeyManager keyManager;
+        private final CopyOnWriteArrayList<GatorWSThread> threadList = new CopyOnWriteArrayList<>();
+        private final GatorRealtimeCoordinator realtime;
+        private final GatorJWTVerifier jwtVerifier;
 	
 	public GatorWSServer(GatorWSProperties _gatorProps) {
 		logger = new GappLogging();
@@ -60,6 +66,10 @@ public class GatorWSServer {
 	    	gappLog.setName("websockets");
                 gatorProps = _gatorProps;
 			keyManager = new GatorWSKeyManager(gatorProps.getHpkeMaxConnectionsPerKey(), gatorProps.getHpkeMaxKeyAge());
+		realtime = gatorProps.realtimeEnabled()
+				? new GatorRealtimeCoordinator(gatorProps, this::deliverRealtime) : null;
+		jwtVerifier = gatorProps.jwtEnabled() ? new GatorJWTVerifier(gatorProps) : null;
+		if(realtime != null) realtime.start();
 	    	gappDateFactory = new GappDateFactory();
                 runServer();
 	}    
@@ -151,7 +161,6 @@ public class GatorWSServer {
         }
         private void runServer() {
                 // ponytail: copy-on-write favors modest connection churn; use a keyed concurrent registry if profiling says otherwise.
-                CopyOnWriteArrayList<GatorWSThread> threadList = new CopyOnWriteArrayList<>();
 		try {
 			while(true) {
                                 Socket socket = getSocket().accept();
@@ -162,7 +171,8 @@ public class GatorWSServer {
                                         logger.logIt(gappLog, true);
                                         continue;
                                 }
-                                GatorWSThread wsThread = new GatorWSThread(socket, threadList, gatorProps, keyManager);
+                                GatorWSThread wsThread = new GatorWSThread(socket, threadList, gatorProps,
+                                        keyManager, realtime, jwtVerifier);
                                 threadList.add(wsThread);
                                 wsThread.start();
 			}
@@ -172,5 +182,11 @@ public class GatorWSServer {
 			logger.logIt(gappLog, gatorProps.withDebug());
                         throw new IllegalStateException("The websocket server stopped unexpectedly", e);
                 }
+        }
+        private boolean deliverRealtime(GatorRealtimeCoordinator.Delivery delivery) {
+                for(GatorWSThread thread: threadList) {
+                        if(thread.matchesConnection(delivery.connectionId())) return thread.deliverRealtime(delivery.envelope());
+                }
+                return false;
         }
 }

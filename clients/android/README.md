@@ -17,9 +17,13 @@ GatorWebSocketClient client = new GatorWebSocketClient(
     }
 );
 
-client.connect("usuario-id", "passphrase");
+client.connect(accessToken);
 // Después de recibir onState("authenticated"):
-JsonObject message = new JsonObject();
-message.addProperty("type", "getuserlist");
-client.send(message);
+client.subscribe(List.of("screen/orders"));
+JsonObject payload = new JsonObject();
+payload.addProperty("type", "order.updated");
+client.publish("topic", List.of("screen/orders"), payload);
 ```
+
+También expone `unsubscribe`, `presence` y `ack`. El cliente deduplica y
+confirma automáticamente los mensajes v2 válidos.

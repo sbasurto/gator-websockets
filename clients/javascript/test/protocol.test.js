@@ -18,7 +18,7 @@ test("HPKE authentication and bidirectional session match the server protocol", 
     keyForAuth: encode(publicKey),
     data: { version: "1", keyId: "test-key", suite: "DHKEM_X25519_HKDF_SHA256_AES_256_GCM" },
   };
-  const authentication = { type: "authenticateme", message: "secret", data: { usuario: "user" } };
+  const authentication = { type: "authenticateme", message: "access-token" };
   const client = await createGatorSession(offer, authentication);
   const initial = JSON.parse(client.initialEnvelope);
   const recipientContext = await suite.createRecipientContext({

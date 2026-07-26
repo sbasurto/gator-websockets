@@ -3,6 +3,7 @@ package gator.websockets.frames;
 import gator.websockets.handler.GatorWSHandShakeSelfCheck;
 import gator.websockets.handler.GatorPacketHandlerSelfCheck;
 import gator.websockets.helpers.GatorWSHpkeSelfCheck;
+import gator.websockets.helpers.GatorJWTVerifierSelfCheck;
 
 public class GatorWSOutputFrameSelfCheck {
         public static void main(String[] args) throws Exception {
@@ -19,5 +20,6 @@ public class GatorWSOutputFrameSelfCheck {
                 assert large[7] == 1 && large[8] == 0 && large[9] == 0;
 
                 GatorWSHpkeSelfCheck.run();
+                GatorJWTVerifierSelfCheck.run();
         }
 }

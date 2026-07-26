@@ -1,0 +1,28 @@
+[Unit]
+Description=Gator WebSocket server node on port %i
+After=network-online.target postgresql.service keycloak.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tomcat
+Group=tomcat
+WorkingDirectory=/home/gapps/softgator/tomcat-11-production
+Environment=TOMCAT_GAPPS_EXTRAS=/home/gapps/softgator/tomcat-11-production
+Environment=GATOR_WS_PORT=%i
+ExecStart=/usr/bin/java -jar /home/gapps/softgator/tomcat-11-production/privlib/bin/gator-websockets.jar
+Restart=on-failure
+RestartSec=5s
+SuccessExitStatus=143
+TimeoutStopSec=20s
+SyslogIdentifier=gator-websockets-%i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

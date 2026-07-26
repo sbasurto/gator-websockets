@@ -24,6 +24,7 @@ import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import gator.websockets.handler.data.GatorWSAuthResponse;
 import gator.websockets.handler.data.GatorWSMessage;
+import java.util.Set;
 
 /**
  *
@@ -47,10 +48,14 @@ public class GatorWSSecurity {
         private final GatorWSProperties gatorProps;
         
         private final GatorWSHpke hpke;
+        private final GatorJWTVerifier jwtVerifier;
+        private Set<String> scopes = Set.of();
         
-        public GatorWSSecurity(GatorWSProperties _gatorProps, GatorWSKeyManager.Generation generation) {
+        public GatorWSSecurity(GatorWSProperties _gatorProps, GatorWSKeyManager.Generation generation,
+                GatorJWTVerifier jwtVerifier) {
                 gatorProps = _gatorProps;
                 hpke = new GatorWSHpke(generation);
+                this.jwtVerifier = jwtVerifier;
                 logger = new GappLogging();
 		gappLog = new GappLog();
                 gappLog.setFileToLog("websocket");                        
@@ -89,10 +94,23 @@ public class GatorWSSecurity {
          */
         public boolean authenticate(GatorWSMessage wsMsg) {
                 gappLog.startNewLog("GatorWSSecurity", "authenticate");
-                if(wsMsg.getMessage() == null || wsMsg.getData() == null
-                        || wsMsg.getData().get("usuario") == null) {
+                if(wsMsg.getMessage() == null) {
                         return false;
                 }
+                if(jwtVerifier != null) {
+                        try {
+                                GatorJWTVerifier.Identity identity = jwtVerifier.verify(wsMsg.getMessage());
+                                setUserId(identity.subject());
+                                setName(identity.name());
+                                scopes = identity.scopes();
+                                return true;
+                        } catch(Exception error) {
+                                gappLog.addMessage("JWT authentication rejected: " + error.getMessage(), 2);
+                                logger.logIt(gappLog, gatorProps.withDebug());
+                                return false;
+                        }
+                }
+                if(wsMsg.getData() == null || wsMsg.getData().get("usuario") == null) return false;
                 Gson gson = new Gson();
                 JsonObject jsonObj = new JsonObject();
                 GappDBHelper helper = new GappDBHelper(gatorProps.getConfigFile());
@@ -108,6 +126,7 @@ public class GatorWSSecurity {
                 if(authResp != null && authResp.wasSuccessful()) {
                         setUserId(authResp.getUsuario().getId());
                         setName(getAuthResponse().getUsuario().getNombre());
+                        scopes = Set.of("messages:send", "messages:receive");
                         gappLog.clearMessages();
                         gappLog.addMessage("Ids: (ori) - " + gatorProps.getId() + ", (new) - " + authResp.getUsuario().getNombre(), 2);                                    
                         logger.logIt(gappLog, gatorProps.withDebug());
@@ -144,5 +163,11 @@ public class GatorWSSecurity {
          */
         public String getName() {
                 return this.nombre;
+        }
+        public Set<String> getScopes() {
+                return scopes;
+        }
+        public boolean usesJwt() {
+                return jwtVerifier != null;
         }
 }

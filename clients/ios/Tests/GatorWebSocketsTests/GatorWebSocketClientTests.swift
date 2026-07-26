@@ -50,7 +50,8 @@ final class GatorWebSocketClientTests: XCTestCase {
                     )
                     let object = try JSONSerialization.jsonObject(with: authentication) as? [String: Any]
                     XCTAssertEqual(object?["type"] as? String, "authenticateme")
-                    XCTAssertEqual((object?["data"] as? [String: Any])?["usuario"] as? String, "user")
+                    XCTAssertEqual(object?["message"] as? String, "access-token")
+                    XCTAssertNil(object?["data"])
 
                     serverInbound = try GatorProtocol.CipherState(material: GatorProtocol.export(
                         context: context,
@@ -99,7 +100,7 @@ final class GatorWebSocketClientTests: XCTestCase {
             ]
         ]
         transport.enqueue(.success(try json(offer)))
-        client.connect(usuario: "user", passphrase: "secret")
+        client.connect(accessToken: "access-token")
         wait(for: [initialSent, authenticated], timeout: 2)
 
         client.send(["type": "getuserlist"]) { result in
@@ -135,7 +136,7 @@ final class GatorWebSocketClientTests: XCTestCase {
         client.onState = { if $0 == "closed" { closed.fulfill() } }
 
         transport.enqueue(.success("{}"))
-        client.connect(usuario: "user", passphrase: "secret")
+        client.connect(accessToken: "access-token")
 
         wait(for: [failed, closed], timeout: 2)
         XCTAssertEqual(transport.cancelledCode, .protocolError)
@@ -163,7 +164,7 @@ final class GatorWebSocketClientTests: XCTestCase {
         }
         client.onState = { if $0 == "closed" { closed.fulfill() } }
 
-        client.connect(usuario: "user", passphrase: "secret")
+        client.connect(accessToken: "access-token")
 
         wait(for: [failed, closed], timeout: 2)
         XCTAssertFalse(created.value)

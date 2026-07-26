@@ -29,7 +29,12 @@ let client = GatorWebSocketClient(
 client.onState = { state in
     print("WebSocket:", state)
     if state == "authenticated" {
-        client.send(["type": "getuserlist"]) { result in
+        client.subscribe(["screen/orders"])
+        client.publish(
+            kind: "topic",
+            ids: ["screen/orders"],
+            payload: ["type": "order.updated", "data": ["orderId": "123"]]
+        ) { result in
             if case .failure(let error) = result {
                 print("No se pudo enviar:", error)
             }
@@ -49,8 +54,11 @@ client.onError = { error in
     print("Error:", error.localizedDescription)
 }
 
-client.connect(usuario: "usuario-id", passphrase: "passphrase")
+client.connect(accessToken: accessToken)
 ```
+
+También expone `unsubscribe`, `presence` y `ack`. El cliente deduplica y
+confirma automáticamente los mensajes v2 válidos.
 
 Los callbacks se entregan en la cola principal de manera predeterminada. Puede
 proporcionarse otra cola mediante `callbackQueue`; configura los callbacks antes
