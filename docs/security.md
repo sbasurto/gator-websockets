@@ -134,14 +134,21 @@ cuando sean necesarios para correlación.
 
 ## Checklist antes de producción
 
-- [ ] `jwtIssuer`, `jwtAudience` y JWKS correctos.
-- [ ] `withDebug=false`.
-- [ ] `allowedOrigins` explícito y sin `*`.
-- [ ] TLS público válido en ambos endpoints.
+- [x] `jwtIssuer`, `jwtAudience` y JWKS correctos.
+- [x] `withDebug=false`.
+- [x] `allowedOrigins` explícito y sin `*`.
+- [x] TLS público válido en ambos endpoints.
 - [ ] Puertos backend y PostgreSQL no públicos.
 - [ ] Permisos de secretos revisados.
-- [ ] Tres heartbeats y cero `ws_alerts`.
-- [ ] E2E JWT con entrega y ACK.
-- [ ] Failover probado con restauración automática.
+- [x] Tres heartbeats y cero `ws_alerts`.
+- [x] E2E JWT con entrega y ACK.
+- [x] Failover probado con restauración automática.
 - [ ] Backups de PostgreSQL y Keycloak verificados.
 - [ ] Plan de rotación y revocación de credenciales disponible.
+
+Los controles marcados tienen evidencia en la
+[liberación del 26 de julio de 2026](operations.md#evidencia-de-liberación-del-26-de-julio-de-2026).
+El 28 de julio de 2026 también se reconfirmaron en Artemisa y Hera la
+configuración JWT/JWKS, `withDebug=false`, los orígenes explícitos y permisos
+`0640` para `websocket.properties`. Los controles abiertos continúan siendo
+requisitos pendientes y no quedan cubiertos por esa liberación.
