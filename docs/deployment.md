@@ -67,7 +67,9 @@ Cada nodo necesita una configuración `gator-lib` cuyo archivo de base incluya:
 
 En la instalación actual PostgreSQL escucha en `localhost,10.100.0.1` y
 `pg_hba.conf` permite exclusivamente a Hera (`10.100.0.33/32`) acceder a
-`db_wmssoft` como `w3apps` mediante SCRAM. No debe abrirse `5432` a Internet.
+`db_gatormail` como `w3apps` mediante SCRAM. Esta base es la autoridad de
+identidad compartida y contiene la coordinación WebSocket. No debe abrirse
+`5432` a Internet.
 
 ## 3. Configurar Keycloak
 
@@ -109,9 +111,9 @@ handshakeTimeoutSeconds=30
 authenticationTimeoutSeconds=30
 idleTimeoutSeconds=300
 realtimeEnabled=true
-realtimeDbConfigFile=indexApplication
+realtimeDbConfigFile=pg_mobile_authorization
 tenantId=example
-applicationId=application
+applicationId=gator
 serverHeartbeatSeconds=10
 serverLeaseSeconds=30
 jwtIssuer=https://identity.example.com/realms/gator
@@ -154,7 +156,9 @@ systemctl daemon-reload
 systemctl enable --now gator-websockets@12381.service
 ```
 
-Artemisa ejecuta `@12381` y `@12382`; Hera ejecuta `@12381`. Antes de
+Artemisa ejecuta `@12381` y `@12382`; Hera ejecuta `@12381`. Las tres instancias
+coordinan mediante `pg_mobile_authorization` en `db_gatormail`, con
+`tenantId=soft-gator` y `applicationId=gator`. Antes de
 reemplazar JAR, configuración o unidad, crear un respaldo fechado en el mismo
 directorio.
 

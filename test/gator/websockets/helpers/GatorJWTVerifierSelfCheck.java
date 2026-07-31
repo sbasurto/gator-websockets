@@ -40,7 +40,9 @@ public final class GatorJWTVerifierSelfCheck {
                         assert "user-1".equals(verifier.verify(token).subject());
                         expectFailure(() -> verifier.verify(token(pair, issuer, "wrong", Instant.now().plusSeconds(60))));
                         expectFailure(() -> verifier.verify(token(pair, issuer, "gator-websockets", Instant.now().minusSeconds(5))));
-			String tampered = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+			int signature = token.lastIndexOf('.') + 1;
+			String tampered = token.substring(0, signature)
+					+ (token.charAt(signature) == 'A' ? 'B' : 'A') + token.substring(signature + 1);
 			expectFailure(() -> verifier.verify(tampered));
                 } finally {
                         server.stop(0);

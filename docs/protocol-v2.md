@@ -227,3 +227,17 @@ pending/dispatched ── TTL vencido ──► expired
 El servidor detecta v2 por `v=2` y presencia de `op`. Cuando
 `realtimeEnabled=false`, continúa disponible el protocolo heredado. JWT también
 puede activarse sin v2, pero la identidad seguirá derivándose del token.
+
+## Autorizaciones de acceso
+
+`login.authorization` está reservado para autoridades internas como Gator
+Security. El móvil recibe y confirma el mensaje, pero aprueba o rechaza por
+HTTPS ante la autoridad que creó el desafío; una decisión publicada por
+WebSocket nunca es válida.
+
+```json
+{"type":"login.authorization","data":{"authorizationId":"uuid","application":"Gator ERM","expiresAt":"2026-07-30T18:30:00Z"}}
+```
+
+La autoridad usa `ws_publish_system`, que conserva idempotencia y entrega a
+todas las conexiones activas del sujeto OIDC.

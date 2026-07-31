@@ -32,6 +32,7 @@ El servidor forma parte del ecosistema open source Gator y se construye junto co
 | [Seguridad](docs/security.md) | JWT, HPKE, secretos, red, hardening y riesgos. |
 | [Protocolo v2](docs/protocol-v2.md) | Contratos JSON, destinos, ACK, presencia y errores. |
 | [Clientes](clients/README.md) | JavaScript, Android e iOS. |
+| [Migración móvil 2026-07-31](docs/migration-mobile-authorization-20260731.md) | Configuración, validación y rollback de Artemisa/Hera. |
 
 ## Requisitos
 

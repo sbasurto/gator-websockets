@@ -58,6 +58,47 @@ create index if not exists ws_delivery_server_pending_idx
 create index if not exists ws_delivery_offline_idx
     on ws_delivery (target_user_id) where connection_id is null and status = 'pending';
 
+create or replace function ws_publish_system(
+    p_tenant_id text, p_application_id text, p_sender_user_id text,
+    p_target_user_id text, p_client_message_id uuid, p_payload jsonb,
+    p_expires_at timestamptz default null)
+returns uuid language plpgsql as $$
+declare
+    message_id uuid := gen_random_uuid();
+    envelope jsonb;
+begin
+    if coalesce(p_payload ->> 'type', '') = '' then raise exception 'payload.type is required'; end if;
+    envelope := jsonb_build_object(
+        'v',2,'op','message','messageId',message_id,'clientMessageId',p_client_message_id,
+        'tenantId',p_tenant_id,'applicationId',p_application_id,
+        'sender',jsonb_build_object('userId',p_sender_user_id),
+        'target',jsonb_build_object('kind','user','ids',jsonb_build_array(p_target_user_id)),
+        'payload',p_payload,'createdAt',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
+    insert into ws_message(message_id,client_message_id,tenant_id,application_id,
+        sender_user_id,target_kind,envelope,expires_at)
+    values(message_id,p_client_message_id,p_tenant_id,p_application_id,
+        p_sender_user_id,'user',envelope,p_expires_at)
+    on conflict (tenant_id,application_id,sender_user_id,client_message_id) do nothing;
+    if not found then
+        select m.message_id into message_id from ws_message m
+         where m.tenant_id=p_tenant_id and m.application_id=p_application_id
+           and m.sender_user_id=p_sender_user_id and m.client_message_id=p_client_message_id;
+        return message_id;
+    end if;
+    insert into ws_delivery(message_id,target_user_id,connection_id,server_id)
+    select message_id,p_target_user_id,c.connection_id,c.server_id from ws_connection c
+    join ws_server_instance s on s.server_id=c.server_id
+    where c.tenant_id=p_tenant_id and c.application_id=p_application_id
+      and c.user_id=p_target_user_id and c.closed_at is null
+      and s.heartbeat_at>clock_timestamp()-interval '30 seconds';
+    if not found then
+        insert into ws_delivery(message_id,target_user_id) values(message_id,p_target_user_id);
+    end if;
+    perform pg_notify('gator_ws_delivery','system');
+    return message_id;
+end;
+$$;
+
 create or replace view ws_metrics as
 with dimensions as (
     select tenant_id, application_id from ws_connection
