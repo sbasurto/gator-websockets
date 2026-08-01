@@ -40,7 +40,8 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
     private final int heartbeatSeconds;
     private final int leaseSeconds;
     private final Predicate<Delivery> deliveryHandler;
-    private final FcmPushSender pushSender;
+    private final FcmPushSender fcmPushSender;
+    private final ApnsPushSender apnsPushSender;
     private final AtomicBoolean running = new AtomicBoolean();
 
     public GatorRealtimeCoordinator(GatorWSProperties properties, Predicate<Delivery> deliveryHandler) {
@@ -56,9 +57,12 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
         leaseSeconds = properties.getServerLeaseSeconds();
         this.deliveryHandler = deliveryHandler;
         try {
-            pushSender = properties.getFcmProjectId().isEmpty() ? null : new FcmPushSender(properties.getFcmProjectId());
+            fcmPushSender = properties.getFcmProjectId().isEmpty() ? null : new FcmPushSender(properties.getFcmProjectId());
+            apnsPushSender = properties.getApnsKeyFile().isEmpty() ? null : new ApnsPushSender(
+                    properties.getApnsKeyFile(), properties.getApnsTeamId(), properties.getApnsKeyId(),
+                    properties.getApnsBundleId(), properties.isApnsSandbox());
         } catch(Exception error) {
-            throw new IllegalArgumentException("Cannot initialize FCM", error);
+            throw new IllegalArgumentException("Cannot initialize push notifications", error);
         }
         hostname = hostname();
     }
@@ -70,7 +74,9 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
     public void start() {
         if(!running.compareAndSet(false, true)) return;
         Thread.ofPlatform().daemon(true).name("gator-realtime-" + serverId).start(this::run);
-        if(pushSender != null) Thread.ofPlatform().daemon(true).name("gator-fcm-" + serverId).start(this::runPush);
+        if(fcmPushSender != null || apnsPushSender != null) {
+            Thread.ofPlatform().daemon(true).name("gator-push-" + serverId).start(this::runPush);
+        }
     }
 
     public void connected(UUID connectionId, String userId) throws Exception {
@@ -384,11 +390,15 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
         while(running.get()) {
             try(Connection connection = connection()) {
                 for(PendingPush push: claimPushes(connection)) {
-                    FcmPushSender.Result result = pushSender.send(push.token(), push.payload());
+                    FcmPushSender.Result result = switch(push.provider()) {
+                        case "fcm" -> fcmPushSender.send(push.token(), push.payload());
+                        case "apns" -> apnsPushSender.send(push.token(), push.payload());
+                        default -> new FcmPushSender.Result(false, true, "Unsupported push provider");
+                    };
                     finishPush(connection, push, result);
                 }
             } catch(Exception error) {
-                System.err.println("FCM dispatcher retrying: " + error.getMessage());
+                System.err.println("Push dispatcher retrying: " + error.getMessage());
             }
             try { Thread.sleep(1000); }
             catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); return; }
@@ -404,17 +414,20 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
                 with claimed as (
                   select push_delivery_id from ws_push_delivery
                   where status='pending' and available_at<=clock_timestamp()
+                    and ((provider='fcm' and ? is not null) or (provider='apns' and ? is not null))
                     and attempts<8 and expires_at>clock_timestamp()
                   order by push_delivery_id for update skip locked limit 20
                 )
                 update ws_push_delivery p set attempts=p.attempts+1,
                   available_at=clock_timestamp()+interval '60 seconds'
                 from claimed where p.push_delivery_id=claimed.push_delivery_id
-                returning p.push_delivery_id,p.target_token,p.payload::text,p.attempts
+                returning p.push_delivery_id,p.provider,p.target_token,p.payload::text,p.attempts
                 """)) {
+            statement.setString(1, fcmPushSender == null ? null : "fcm");
+            statement.setString(2, apnsPushSender == null ? null : "apns");
             try(ResultSet result = statement.executeQuery()) {
                 while(result.next()) pushes.add(new PendingPush(
-                        result.getLong(1), result.getString(2), result.getString(3), result.getInt(4)));
+                        result.getLong(1), result.getString(2), result.getString(3), result.getString(4), result.getInt(5)));
             }
         }
         return pushes;
@@ -587,5 +600,5 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
     public record Delivery(UUID connectionId, UUID messageId, String envelope) {}
     private record TargetConnection(UUID connectionId, UUID serverId, String userId) {}
     private record PendingDelivery(long deliveryId, UUID connectionId, UUID messageId, String envelope) {}
-    private record PendingPush(long id, String token, String payload, int attempts) {}
+    private record PendingPush(long id, String provider, String token, String payload, int attempts) {}
 }

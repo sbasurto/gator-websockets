@@ -5,6 +5,7 @@ import gator.websockets.handler.GatorPacketHandlerSelfCheck;
 import gator.websockets.helpers.GatorWSHpkeSelfCheck;
 import gator.websockets.helpers.GatorJWTVerifierSelfCheck;
 import gator.websockets.realtime.FcmPushSenderSelfCheck;
+import gator.websockets.realtime.ApnsPushSenderSelfCheck;
 
 public class GatorWSOutputFrameSelfCheck {
         public static void main(String[] args) throws Exception {
@@ -23,5 +24,6 @@ public class GatorWSOutputFrameSelfCheck {
                 GatorWSHpkeSelfCheck.run();
                 GatorJWTVerifierSelfCheck.run();
                 FcmPushSenderSelfCheck.run();
+                ApnsPushSenderSelfCheck.run();
         }
 }

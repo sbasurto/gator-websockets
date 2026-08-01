@@ -51,6 +51,11 @@ public class GatorWSProperties {
         private final int serverHeartbeatSeconds;
         private final int serverLeaseSeconds;
         private final String fcmProjectId;
+        private final String apnsKeyFile;
+        private final String apnsTeamId;
+        private final String apnsKeyId;
+        private final String apnsBundleId;
+        private final boolean apnsSandbox;
         private final String jwtIssuer;
         private final String jwtAudience;
         private final String jwtJwksUri;
@@ -92,6 +97,15 @@ public class GatorWSProperties {
                 serverLeaseSeconds = positiveInt("serverLeaseSeconds", 30);
                 fcmProjectId = System.getenv().getOrDefault("GATOR_FCM_PROJECT_ID",
                         appProps.getProperty("fcmProjectId", "")).trim();
+                apnsKeyFile = environment("GATOR_APNS_KEY_FILE", "apnsKeyFile");
+                apnsTeamId = environment("GATOR_APNS_TEAM_ID", "apnsTeamId");
+                apnsKeyId = environment("GATOR_APNS_KEY_ID", "apnsKeyId");
+                apnsBundleId = environment("GATOR_APNS_BUNDLE_ID", "apnsBundleId");
+                apnsSandbox = "sandbox".equalsIgnoreCase(environment(
+                        "GATOR_APNS_ENVIRONMENT", "apnsEnvironment", "production"));
+                if(!apnsKeyFile.isEmpty() && (apnsTeamId.isEmpty() || apnsKeyId.isEmpty() || apnsBundleId.isEmpty())) {
+                        throw new IllegalArgumentException("APNs team, key and bundle identifiers are required when APNs is enabled");
+                }
                 if(serverLeaseSeconds <= serverHeartbeatSeconds) {
                         throw new IllegalArgumentException("serverLeaseSeconds must exceed serverHeartbeatSeconds");
                 }
@@ -127,6 +141,11 @@ public class GatorWSProperties {
                 serverHeartbeatSeconds = source.serverHeartbeatSeconds;
                 serverLeaseSeconds = source.serverLeaseSeconds;
                 fcmProjectId = source.fcmProjectId;
+                apnsKeyFile = source.apnsKeyFile;
+                apnsTeamId = source.apnsTeamId;
+                apnsKeyId = source.apnsKeyId;
+                apnsBundleId = source.apnsBundleId;
+                apnsSandbox = source.apnsSandbox;
                 jwtIssuer = source.jwtIssuer;
                 jwtAudience = source.jwtAudience;
                 jwtJwksUri = source.jwtJwksUri;
@@ -187,6 +206,11 @@ public class GatorWSProperties {
         public String getFcmProjectId() {
                 return fcmProjectId;
         }
+        public String getApnsKeyFile() { return apnsKeyFile; }
+        public String getApnsTeamId() { return apnsTeamId; }
+        public String getApnsKeyId() { return apnsKeyId; }
+        public String getApnsBundleId() { return apnsBundleId; }
+        public boolean isApnsSandbox() { return apnsSandbox; }
         public boolean jwtEnabled() {
                 return !jwtIssuer.isEmpty();
         }
@@ -236,6 +260,12 @@ public class GatorWSProperties {
                         throw new IllegalArgumentException(property + " has an invalid value");
                 }
                 return Math.toIntExact(seconds * 1000L);
+        }
+        private String environment(String variable, String property) {
+                return environment(variable, property, "");
+        }
+        private String environment(String variable, String property, String defaultValue) {
+                return System.getenv().getOrDefault(variable, appProps.getProperty(property, defaultValue)).trim();
         }
         private String requiredWhenRealtime(String property, String defaultValue) {
                 String value = appProps.getProperty(property, defaultValue).trim();

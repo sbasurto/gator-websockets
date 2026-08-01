@@ -61,6 +61,7 @@ create index if not exists ws_delivery_offline_idx
 create table if not exists ws_push_delivery (
     push_delivery_id bigint generated always as identity primary key,
     message_id uuid not null references ws_message(message_id) on delete cascade,
+    provider text not null default 'fcm' check (provider in ('fcm','apns')),
     target_token text not null,
     payload jsonb not null,
     status text not null default 'pending' check (status in ('pending','delivered','failed','expired')),
@@ -71,20 +72,35 @@ create table if not exists ws_push_delivery (
     last_error text,
     unique (message_id, target_token)
 );
-create index if not exists ws_push_delivery_pending_idx
-    on ws_push_delivery (available_at) where status = 'pending';
+alter table ws_push_delivery add column if not exists provider text not null default 'fcm';
+do $$ begin
+    if not exists (select 1 from pg_constraint where conname='ws_push_delivery_provider_check') then
+        alter table ws_push_delivery add constraint ws_push_delivery_provider_check
+            check (provider in ('fcm','apns'));
+    end if;
+end $$;
+drop index if exists ws_push_delivery_pending_idx;
+create index ws_push_delivery_pending_idx
+    on ws_push_delivery (provider,available_at) where status = 'pending';
+
+create or replace function ws_enqueue_push(
+    p_message_id uuid, p_provider text, p_target_token text, p_payload jsonb, p_expires_at timestamptz)
+returns void language plpgsql as $$
+begin
+    if p_provider not in ('fcm','apns') or coalesce(btrim(p_target_token),'') = ''
+       or coalesce(p_payload ->> 'type','') = '' then
+        raise exception 'Valid push provider, token and payload.type are required';
+    end if;
+    insert into ws_push_delivery(message_id,provider,target_token,payload,expires_at)
+    values(p_message_id,p_provider,p_target_token,p_payload,p_expires_at)
+    on conflict (message_id,target_token) do nothing;
+end;
+$$;
 
 create or replace function ws_enqueue_push(
     p_message_id uuid, p_target_token text, p_payload jsonb, p_expires_at timestamptz)
-returns void language plpgsql as $$
-begin
-    if coalesce(btrim(p_target_token),'') = '' or coalesce(p_payload ->> 'type','') = '' then
-        raise exception 'Push token and payload.type are required';
-    end if;
-    insert into ws_push_delivery(message_id,target_token,payload,expires_at)
-    values(p_message_id,p_target_token,p_payload,p_expires_at)
-    on conflict (message_id,target_token) do nothing;
-end;
+returns void language sql as $$
+    select ws_enqueue_push(p_message_id,'fcm',p_target_token,p_payload,p_expires_at);
 $$;
 
 create or replace function ws_publish_system(

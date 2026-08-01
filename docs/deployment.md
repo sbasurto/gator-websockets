@@ -117,6 +117,11 @@ applicationId=gator
 serverHeartbeatSeconds=10
 serverLeaseSeconds=30
 fcmProjectId=
+apnsKeyFile=
+apnsTeamId=
+apnsKeyId=
+apnsBundleId=com.softgator.mobile
+apnsEnvironment=production
 jwtIssuer=https://identity.example.com/realms/gator
 jwtAudience=gator-websockets
 jwtJwksUri=https://identity.example.com/realms/gator/protocol/openid-connect/certs
@@ -137,6 +142,9 @@ Reglas relevantes:
   `Origin`; `*` debe reservarse para desarrollo.
 - `fcmProjectId` vacío deshabilita FCM sin afectar WebSocket. En producción se
   recomienda definirlo mediante `GATOR_FCM_PROJECT_ID`.
+- `apnsKeyFile` vacío deshabilita APNs sin afectar WebSocket. Si se configura,
+  también son obligatorios Team ID, Key ID y bundle ID. `apnsEnvironment`
+  acepta `production` (predeterminado) o `sandbox`.
 
 Para Android, instalar la cuenta de servicio fuera de Git y crear el archivo
 de entorno leído por systemd:
@@ -151,6 +159,11 @@ de entorno leído por systemd:
 ```properties
 GOOGLE_APPLICATION_CREDENTIALS=/etc/gator/fcm-service-account.json
 GATOR_FCM_PROJECT_ID=example-firebase-project
+GATOR_APNS_KEY_FILE=/etc/gator/apns-auth-key.p8
+GATOR_APNS_TEAM_ID=APPLE_TEAM_ID
+GATOR_APNS_KEY_ID=APPLE_KEY_ID
+GATOR_APNS_BUNDLE_ID=com.softgator.mobile
+GATOR_APNS_ENVIRONMENT=production
 ```
 
 Ambos archivos deben pertenecer al usuario del servicio y tener modo `0600`.
