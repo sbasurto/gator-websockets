@@ -29,8 +29,8 @@ se modificó hasta observar un heartbeat sano de Hera.
 - Hera: una instancia sana en `db_gatormail`.
 - Artemisa: dos instancias sanas en `db_gatormail`.
 - HAProxy activo en ambos hosts y certificados TLS válidos en `12380`.
-- `g-sec` responde `401` sin Bearer token en
-  `/g-sec/api/mobile/authorizations`.
+- `gator-security` responde `401` sin Bearer token en
+  `/gator-security/api/mobile/authorizations`.
 - Gator Mail responde mediante su redirección de autenticación normal.
 
 ## Respaldos y rollback
