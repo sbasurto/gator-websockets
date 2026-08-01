@@ -116,6 +116,7 @@ tenantId=example
 applicationId=gator
 serverHeartbeatSeconds=10
 serverLeaseSeconds=30
+fcmProjectId=
 jwtIssuer=https://identity.example.com/realms/gator
 jwtAudience=gator-websockets
 jwtJwksUri=https://identity.example.com/realms/gator/protocol/openid-connect/certs
@@ -134,6 +135,25 @@ Reglas relevantes:
   debe configurarlo.
 - `allowedOrigins` vacío rechaza navegadores pero permite clientes sin
   `Origin`; `*` debe reservarse para desarrollo.
+- `fcmProjectId` vacío deshabilita FCM sin afectar WebSocket. En producción se
+  recomienda definirlo mediante `GATOR_FCM_PROJECT_ID`.
+
+Para Android, instalar la cuenta de servicio fuera de Git y crear el archivo
+de entorno leído por systemd:
+
+```text
+/etc/gator/fcm-service-account.json
+/etc/gator/gator-websockets.env
+```
+
+`gator-websockets.env` contiene únicamente configuración del entorno:
+
+```properties
+GOOGLE_APPLICATION_CREDENTIALS=/etc/gator/fcm-service-account.json
+GATOR_FCM_PROJECT_ID=example-firebase-project
+```
+
+Ambos archivos deben pertenecer al usuario del servicio y tener modo `0600`.
 
 ## 5. Instalar el nodo
 

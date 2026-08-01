@@ -50,6 +50,7 @@ public class GatorWSProperties {
         private final String applicationId;
         private final int serverHeartbeatSeconds;
         private final int serverLeaseSeconds;
+        private final String fcmProjectId;
         private final String jwtIssuer;
         private final String jwtAudience;
         private final String jwtJwksUri;
@@ -89,6 +90,8 @@ public class GatorWSProperties {
                 applicationId = requiredWhenRealtime("applicationId", "gator");
                 serverHeartbeatSeconds = positiveInt("serverHeartbeatSeconds", 10);
                 serverLeaseSeconds = positiveInt("serverLeaseSeconds", 30);
+                fcmProjectId = System.getenv().getOrDefault("GATOR_FCM_PROJECT_ID",
+                        appProps.getProperty("fcmProjectId", "")).trim();
                 if(serverLeaseSeconds <= serverHeartbeatSeconds) {
                         throw new IllegalArgumentException("serverLeaseSeconds must exceed serverHeartbeatSeconds");
                 }
@@ -123,6 +126,7 @@ public class GatorWSProperties {
                 applicationId = source.applicationId;
                 serverHeartbeatSeconds = source.serverHeartbeatSeconds;
                 serverLeaseSeconds = source.serverLeaseSeconds;
+                fcmProjectId = source.fcmProjectId;
                 jwtIssuer = source.jwtIssuer;
                 jwtAudience = source.jwtAudience;
                 jwtJwksUri = source.jwtJwksUri;
@@ -179,6 +183,9 @@ public class GatorWSProperties {
         }
         public int getServerLeaseSeconds() {
                 return serverLeaseSeconds;
+        }
+        public String getFcmProjectId() {
+                return fcmProjectId;
         }
         public boolean jwtEnabled() {
                 return !jwtIssuer.isEmpty();

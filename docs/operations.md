@@ -76,6 +76,7 @@ observabilidad.
 | `no_active_server` | Ningún heartbeat en 60 s. | Revisar nodos y conectividad PostgreSQL. |
 | `old_pending_delivery` | Entrega pendiente por más de 60 s. | Revisar conexión destino, nodos y reintentos. |
 | `repeated_delivery_failure` | Entrega con 3 o más intentos. | Revisar logs y estado de la conexión. |
+| `push_delivery_failure` | FCM rechazó definitivamente una entrega. | Revisar `last_error`; renovar el token del dispositivo si fue invalidado. |
 
 El mantenimiento registra alertas con prioridad warning y sale con código 1:
 
@@ -117,6 +118,18 @@ journalctl -u gator-websockets-maintenance.service -n 50
 Buscar fallas de coordinación, JWT, TLS y base sin copiar tokens ni payloads a
 incidentes. Los mensajes del verificador solo describen la causa del rechazo;
 no incluyen el JWT.
+
+FCM conserva sólo código HTTP o clase de excepción, nunca el token ni la llave:
+
+```sql
+select status, attempts, last_error, available_at
+from ws_push_delivery
+where status in ('pending','failed')
+order by push_delivery_id desc;
+```
+
+Los errores `400`, `404` y `UNREGISTERED` se cierran sin reintento. Los fallos
+transitorios reintentan con espera exponencial, hasta ocho intentos.
 
 ## Runbook: nodo Java caído
 

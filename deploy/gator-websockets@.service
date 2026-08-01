@@ -10,6 +10,7 @@ Group=tomcat
 WorkingDirectory=/home/gapps/softgator/tomcat-11-production
 Environment=TOMCAT_GAPPS_EXTRAS=/home/gapps/softgator/tomcat-11-production
 Environment=GATOR_WS_PORT=%i
+EnvironmentFile=-/etc/gator/gator-websockets.env
 ExecStart=/usr/bin/java -jar /home/gapps/softgator/tomcat-11-production/privlib/bin/gator-websockets.jar
 Restart=on-failure
 RestartSec=5s

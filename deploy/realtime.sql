@@ -58,6 +58,35 @@ create index if not exists ws_delivery_server_pending_idx
 create index if not exists ws_delivery_offline_idx
     on ws_delivery (target_user_id) where connection_id is null and status = 'pending';
 
+create table if not exists ws_push_delivery (
+    push_delivery_id bigint generated always as identity primary key,
+    message_id uuid not null references ws_message(message_id) on delete cascade,
+    target_token text not null,
+    payload jsonb not null,
+    status text not null default 'pending' check (status in ('pending','delivered','failed','expired')),
+    attempts integer not null default 0,
+    available_at timestamptz not null default clock_timestamp(),
+    expires_at timestamptz not null,
+    delivered_at timestamptz,
+    last_error text,
+    unique (message_id, target_token)
+);
+create index if not exists ws_push_delivery_pending_idx
+    on ws_push_delivery (available_at) where status = 'pending';
+
+create or replace function ws_enqueue_push(
+    p_message_id uuid, p_target_token text, p_payload jsonb, p_expires_at timestamptz)
+returns void language plpgsql as $$
+begin
+    if coalesce(btrim(p_target_token),'') = '' or coalesce(p_payload ->> 'type','') = '' then
+        raise exception 'Push token and payload.type are required';
+    end if;
+    insert into ws_push_delivery(message_id,target_token,payload,expires_at)
+    values(p_message_id,p_target_token,p_payload,p_expires_at)
+    on conflict (message_id,target_token) do nothing;
+end;
+$$;
+
 create or replace function ws_publish_system(
     p_tenant_id text, p_application_id text, p_sender_user_id text,
     p_target_user_id text, p_client_message_id uuid, p_payload jsonb,
@@ -134,6 +163,10 @@ having min(available_at) < clock_timestamp()-interval '60 seconds'
 union all
 select 'repeated_delivery_failure', concat(count(*),' deliveries have at least 3 attempts')
 from ws_delivery where status in ('pending','dispatched') and attempts >= 3
+having count(*) > 0
+union all
+select 'push_delivery_failure', concat(count(*),' push notifications failed')
+from ws_push_delivery where status='failed'
 having count(*) > 0;
 
 create or replace function ws_cleanup(

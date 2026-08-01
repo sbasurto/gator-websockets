@@ -3,7 +3,8 @@
 ## Objetivo
 
 Centralizar presencia WebSocket y autorizaciones de acceso en `db_gatormail`,
-sin cambiar el proveedor existente de correo/SMS.
+sin cambiar el proveedor existente de correo/SMS, y despertar Android mediante
+FCM cuando no se encuentre en primer plano.
 
 ## Cambios aplicados
 
@@ -16,6 +17,10 @@ sin cambiar el proveedor existente de correo/SMS.
   `db_gatormail`; Hera usa la dirección VPN de Artemisa.
 - Los tres nodos usan `tenantId=soft-gator` y `applicationId=gator`.
 - Hera se migró primero; Artemisa después en orden `12381`, `12382`.
+- La cuenta FCM y su archivo de entorno están fuera de Git, en `/etc/gator`,
+  con propietario `tomcat` y modo `0600`.
+- `ws_push_delivery` reclama cada entrega mediante `FOR UPDATE SKIP LOCKED` y
+  registra intentos, estado y error sin escribir tokens en logs.
 
 ## Hallazgo y corrección
 
@@ -32,6 +37,8 @@ se modificó hasta observar un heartbeat sano de Hera.
 - `gator-security` responde `401` sin Bearer token en
   `/gator-security/api/mobile/authorizations`.
 - Gator Mail responde mediante su redirección de autenticación normal.
+- FCM aceptó la autenticación y rechazó el token sintético con HTTP 400 en un
+  solo intento; el mensaje de prueba fue eliminado después.
 
 ## Respaldos y rollback
 
