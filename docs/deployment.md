@@ -2,8 +2,8 @@
 
 Esta guía describe un despliegue reproducible con varios nodos, Keycloak,
 PostgreSQL, systemd, HAProxy y certificados Let's Encrypt. Los nombres y rutas
-de Artemisa/Hera documentan la instalación vigente; deben sustituirse en otro
-entorno.
+usan identificadores genéricos; deben sustituirse por los valores propios de
+cada entorno.
 
 ## Prerrequisitos
 
@@ -65,8 +65,8 @@ Cada nodo necesita una configuración `gator-lib` cuyo archivo de base incluya:
 }
 ```
 
-En la instalación actual PostgreSQL escucha en `localhost,10.100.0.1` y
-`pg_hba.conf` permite exclusivamente a Hera (`10.100.0.33/32`) acceder a
+En el ejemplo PostgreSQL escucha en `localhost,<primary-private-ip>` y
+`pg_hba.conf` permite exclusivamente a `<secondary-private-ip>/32` acceder a
 `db_gatormail` como `w3apps` mediante SCRAM. Esta base es la autoridad de
 identidad compartida y contiene la coordinación WebSocket. No debe abrirse
 `5432` a Internet.
@@ -189,7 +189,7 @@ systemctl daemon-reload
 systemctl enable --now gator-websockets@12381.service
 ```
 
-Artemisa ejecuta `@12381` y `@12382`; Hera ejecuta `@12381`. Las tres instancias
+El nodo primario ejecuta `@12381` y `@12382`; el secundario ejecuta `@12381`. Las tres instancias
 coordinan mediante `pg_mobile_authorization` en `db_gatormail`, con
 `tenantId=soft-gator` y `applicationId=gator`. Antes de
 reemplazar JAR, configuración o unidad, crear un respaldo fechado en el mismo
@@ -197,7 +197,8 @@ directorio.
 
 ## 6. Instalar HAProxy
 
-Artemisa usa `deploy/haproxy.cfg`; Hera usa `deploy/haproxy-hera.cfg`.
+El nodo primario usa `deploy/haproxy.cfg`; el secundario usa una configuración
+equivalente con los backends en orden inverso.
 
 ```bash
 install -o root -g root -m 644 deploy/haproxy.cfg /etc/haproxy/haproxy.cfg
@@ -214,8 +215,8 @@ deben ser accesibles solo por loopback o VPN.
 HAProxy espera un PEM que contenga full chain seguido de private key:
 
 ```text
-/etc/haproxy/certs/artemisa.soft-gator.com.pem
-/etc/haproxy/certs/hera.soft-gator.com.pem
+/etc/haproxy/certs/ws-primary.example.com.pem
+/etc/haproxy/certs/ws-secondary.example.com.pem
 ```
 
 Instalar `deploy/gator-websockets-cert-renew` como hook:

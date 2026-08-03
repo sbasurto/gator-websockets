@@ -4,14 +4,14 @@
 
 | Host | Servicio | Función |
 | --- | --- | --- |
-| Artemisa | `haproxy.service` | Entrada pública primaria `:12380`. |
-| Artemisa | `gator-websockets@12381.service` | Nodo WebSocket. |
-| Artemisa | `gator-websockets@12382.service` | Nodo WebSocket. |
-| Artemisa | `gator-websockets-maintenance.timer` | Limpieza, métricas y alertas. |
-| Artemisa | PostgreSQL 18 | Persistencia y coordinación. |
-| Artemisa | Keycloak | Emisión de JWT y JWKS. |
-| Hera | `haproxy.service` | Entrada pública secundaria `:12380`. |
-| Hera | `gator-websockets@12381.service` | Nodo WebSocket. |
+| Nodo primario | `haproxy.service` | Entrada pública primaria `:12380`. |
+| Nodo primario | `gator-websockets@12381.service` | Nodo WebSocket. |
+| Nodo primario | `gator-websockets@12382.service` | Nodo WebSocket. |
+| Nodo primario | `gator-websockets-maintenance.timer` | Limpieza, métricas y alertas. |
+| Nodo primario | PostgreSQL 18 | Persistencia y coordinación. |
+| Nodo primario | Keycloak | Emisión de JWT y JWKS. |
+| Nodo secundario | `haproxy.service` | Entrada pública secundaria `:12380`. |
+| Nodo secundario | `gator-websockets@12381.service` | Nodo WebSocket. |
 
 ## Comprobación rápida
 
@@ -22,7 +22,7 @@ systemctl is-active haproxy gator-websockets@12381.service
 systemctl is-enabled haproxy gator-websockets@12381.service
 ```
 
-En Artemisa agregar `gator-websockets@12382.service` y el timer. Un servicio
+En el nodo primario agregar `gator-websockets@12382.service` y el timer. Un servicio
 `active` pero no `enabled` no sobrevivirá un reinicio.
 
 Listeners:
@@ -147,9 +147,9 @@ systemctl is-active gator-websockets@12381.service
 
 ## Runbook: balanceador primario caído
 
-1. La aplicación debe cambiar a `wss://hera.soft-gator.com:12380/`.
-2. Confirmar TLS y estado de HAProxy en Hera.
-3. Reparar o reiniciar HAProxy de Artemisa.
+1. La aplicación debe cambiar a `wss://ws-secondary.example.com:12380/`.
+2. Confirmar TLS y estado de HAProxy en el nodo secundario.
+3. Reparar o reiniciar HAProxy del nodo primario.
 4. Validar configuración antes de recargar.
 
 Las conexiones existentes al primario se pierden y deben recrearse. La entrega
@@ -190,9 +190,9 @@ HAProxy.
 La prueba controlada de la capa WebSocket es:
 
 1. obtener el JWT antes del corte;
-2. detener HAProxy y nodos Java de Artemisa;
-3. esperar 6 segundos para los health checks de Hera;
-4. conectar dos clientes al endpoint de Hera;
+2. detener HAProxy y nodos Java del nodo primario;
+3. esperar 6 segundos para los health checks del nodo secundario;
+4. conectar dos clientes al endpoint secundario;
 5. publicar, recibir y confirmar un mensaje;
 6. restaurar servicios en un bloque `finally`;
 7. confirmar tres heartbeats y cero alertas.
@@ -203,7 +203,7 @@ No detener PostgreSQL o Keycloak en esta prueba: esa falla aún no está cubiert
 
 - TLS válido en ambos endpoints, `Verify return code: 0`.
 - Tres nodos con heartbeat y cero alertas.
-- E2E público entre Artemisa y Hera: JWT, entrega, ACK y presencia correctos.
+- E2E público entre los nodos primario y secundario: JWT, entrega, ACK y presencia correctos.
 - E2E directo entre hosts: `distributed=true`.
-- Corte de HAProxy y ambos nodos de Artemisa: Hera continuó después de 6 s.
+- Corte de HAProxy y ambos procesos del nodo primario: el secundario continuó después de 6 s.
 - Temporales que contenían configuración, certificado o credenciales eliminados.

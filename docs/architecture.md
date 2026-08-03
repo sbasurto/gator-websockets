@@ -7,9 +7,9 @@ mensajes en tiempo real aunque una instancia Java deje de responder. Los nodos
 no comparten memoria: coordinan presencia, suscripciones y entregas mediante
 PostgreSQL.
 
-La arquitectura actual ofrece redundancia de la capa WebSocket en dos hosts.
-PostgreSQL y Keycloak continúan en Artemisa; por ello la pérdida completa de
-Artemisa todavía no es una falla cubierta de extremo a extremo.
+La arquitectura ofrece redundancia de la capa WebSocket en dos hosts. En el
+ejemplo, PostgreSQL y Keycloak permanecen en el nodo primario; por ello perder
+ese host todavía no es una falla cubierta de extremo a extremo.
 
 ## Topología
 
@@ -27,7 +27,7 @@ Artemisa todavía no es una falla cubierta de extremo a extremo.
 └─────────────────────┘         │        │
                                 │        │
                  primaria       │        │ secundaria
-                 Artemisa       │        │ Hera
+                 Nodo A         │        │ Nodo B
              ┌──────────────────▼┐      ┌▼──────────────────┐
              │ HAProxy :12380    │      │ HAProxy :12380    │
              │ termina TLS       │      │ termina TLS       │
@@ -36,7 +36,7 @@ Artemisa todavía no es una falla cubierta de extremo a extremo.
           ┌──────────┼────────────────────────────────┤
           │          │                                │
      ┌────▼─────┐ ┌──▼───────┐                  ┌────▼─────┐
-     │ Artemisa │ │ Artemisa │                  │ Hera     │
+     │ Nodo A   │ │ Nodo A   │                  │ Nodo B   │
      │ :12381   │ │ :12382   │                  │ :12381   │
      └────┬─────┘ └──┬───────┘                  └────┬─────┘
           │          │                               │
@@ -47,8 +47,8 @@ Artemisa todavía no es una falla cubierta de extremo a extremo.
 
 Endpoints públicos:
 
-- Primario: `wss://artemisa.soft-gator.com:12380/`.
-- Secundario: `wss://hera.soft-gator.com:12380/`.
+- Primario: `wss://ws-primary.example.com:12380/`.
+- Secundario: `wss://ws-secondary.example.com:12380/`.
 
 Los clientes oficiales reciben una URL por instancia. La aplicación que los
 integra debe crear una nueva instancia contra el endpoint secundario cuando el
@@ -102,8 +102,8 @@ La ventana normal de detección es de aproximadamente 4 a 6 segundos. La
 conexión WebSocket no se migra: el cliente debe reconectarse.
 
 Los backends usan `ssl verify none`. El tráfico sigue cifrado, pero la identidad
-del certificado interno no se verifica; la red VPN entre `10.100.0.1` y
-`10.100.0.33` es parte de la frontera de confianza actual.
+del certificado interno no se verifica; la red privada entre ambos nodos forma
+parte de la frontera de confianza.
 
 ### Nodos WebSocket
 
@@ -224,17 +224,17 @@ existían al publicar. No se reasignan a conexiones futuras.
 | Falla | Resultado |
 | --- | --- |
 | Un proceso Java | HAProxy lo retira; otros nodos continúan. |
-| Ambos procesos Java de Artemisa | Hera continúa entregando después del health check. |
-| HAProxy de Artemisa | El cliente debe usar el endpoint de Hera. |
-| Nodo Hera | Los dos nodos de Artemisa continúan. |
+| Ambos procesos Java del nodo A | El nodo B continúa entregando después del health check. |
+| HAProxy del nodo A | El cliente debe usar el endpoint del nodo B. |
+| Nodo B | Los dos procesos del nodo A continúan. |
 | Enlace VPN | Cada balanceador conserva sus nodos locales; se pierde coordinación si también se pierde PostgreSQL. |
 | Keycloak temporalmente | Sesiones existentes continúan; autenticaciones nuevas pueden usar JWKS cacheado mientras siga disponible. |
 | PostgreSQL | Publicación, presencia, ACK y coordinación se interrumpen. |
-| Host Artemisa completo | Hera conserva el proceso, pero pierde PostgreSQL y Keycloak; no hay HA total. |
+| Nodo A completo | El nodo B conserva el proceso, pero pierde PostgreSQL y Keycloak; no hay HA total. |
 
 ## Siguiente nivel de disponibilidad
 
-Para tolerar la pérdida completa de Artemisa se requiere:
+Para tolerar la pérdida completa del nodo primario se requiere:
 
 1. réplica PostgreSQL en otro host;
 2. failover automático de PostgreSQL y un endpoint estable de base de datos;

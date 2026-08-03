@@ -95,7 +95,7 @@ capturas ni incidencias.
 - HAProxy valida configuración antes de cada reload.
 
 La instalación actual permite en PostgreSQL únicamente
-`10.100.0.33/32 → db_wmssoft/w3apps` por red. El cifrado PostgreSQL debe
+`<secondary-private-ip>/32 → application_database/application_user` por red. El cifrado PostgreSQL debe
 habilitarse si el enlace deja de estar confinado a la VPN.
 
 ## Hardening del proceso
@@ -125,7 +125,7 @@ cuando sean necesarios para correlación.
 ## Riesgos conocidos
 
 - PostgreSQL es un punto único de falla.
-- Keycloak y su almacenamiento permanecen en Artemisa.
+- Keycloak y su almacenamiento permanecen en el nodo primario.
 - TLS interno cifra pero no verifica certificado de backend.
 - Los clientes no cambian automáticamente de endpoint.
 - La deduplicación de cliente guarda 1024 IDs por sesión; una repetición más
@@ -148,7 +148,7 @@ cuando sean necesarios para correlación.
 
 Los controles marcados tienen evidencia en la
 [liberación del 26 de julio de 2026](operations.md#evidencia-de-liberación-del-26-de-julio-de-2026).
-El 28 de julio de 2026 también se reconfirmaron en Artemisa y Hera la
+El 28 de julio de 2026 también se reconfirmaron en los nodos primario y secundario la
 configuración JWT/JWKS, `withDebug=false`, los orígenes explícitos y permisos
 `0640` para `websocket.properties`. Los controles abiertos continúan siendo
 requisitos pendientes y no quedan cubiertos por esa liberación.
