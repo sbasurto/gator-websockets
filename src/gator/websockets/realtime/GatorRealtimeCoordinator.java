@@ -99,16 +99,21 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
                 statement.executeUpdate();
             }
             try(PreparedStatement statement = connection.prepareStatement("""
-                    update ws_delivery set connection_id=?, server_id=?
-                    where delivery_id in (
-                      select delivery_id from ws_delivery
-                      where connection_id is null and target_user_id=? and status='pending'
-                      order by delivery_id for update skip locked
+                    update ws_delivery d set connection_id=?, server_id=?
+                    where d.delivery_id in (
+                      select pending.delivery_id
+                      from ws_delivery pending
+                      join ws_message message on message.message_id=pending.message_id
+                      where pending.connection_id is null and pending.target_user_id=?
+                        and pending.status='pending' and message.tenant_id=? and message.application_id=?
+                      order by pending.delivery_id for update of pending skip locked
                     )
                     """)) {
                 statement.setObject(1, connectionId);
                 statement.setObject(2, serverId);
                 statement.setString(3, userId);
+                statement.setString(4, tenantId);
+                statement.setString(5, applicationId);
                 statement.executeUpdate();
             }
             notifyDeliveries(connection);

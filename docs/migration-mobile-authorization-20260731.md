@@ -15,7 +15,7 @@ FCM cuando no se encuentre en primer plano.
   por las llaves foráneas. La tabla permanece propiedad de `postgres`.
 - Se creó `pg_mobile_authorization` en los nodos primario y secundario. Apunta a
   `db_gatormail`; el secundario usa la dirección privada del primario.
-- Los tres nodos usan `tenantId=soft-gator` y `applicationId=gator`.
+- Los tres nodos usan `tenantId=softgator` y `applicationId=gator`.
 - El nodo secundario se migró primero; el primario después en orden `12381`, `12382`.
 - La cuenta FCM y su archivo de entorno están fuera de Git, en `/etc/gator`,
   con propietario `tomcat` y modo `0600`.

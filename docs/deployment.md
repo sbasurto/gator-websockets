@@ -191,7 +191,7 @@ systemctl enable --now gator-websockets@12381.service
 
 El nodo primario ejecuta `@12381` y `@12382`; el secundario ejecuta `@12381`. Las tres instancias
 coordinan mediante `pg_mobile_authorization` en `db_gatormail`, con
-`tenantId=soft-gator` y `applicationId=gator`. Antes de
+`tenantId=softgator` y `applicationId=gator`. Antes de
 reemplazar JAR, configuración o unidad, crear un respaldo fechado en el mismo
 directorio.
 
