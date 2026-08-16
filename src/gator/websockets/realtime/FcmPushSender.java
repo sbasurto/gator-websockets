@@ -53,8 +53,8 @@ final class FcmPushSender {
             if(entry.getValue().isJsonPrimitive()) data.addProperty(entry.getKey(), entry.getValue().getAsString());
         }
         JsonObject notification = new JsonObject();
-        notification.addProperty("title", "Autorizar inicio de sesión");
-        notification.addProperty("body", "Solicitud de " + string(source, "application", "Gator"));
+        notification.addProperty("title", string(source, "application", "Gator"));
+        notification.addProperty("body", ApnsPushSender.notificationBody(source));
         JsonObject message = new JsonObject();
         message.addProperty("token", token);
         message.add("notification", notification);

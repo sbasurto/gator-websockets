@@ -68,8 +68,8 @@ final class ApnsPushSender {
     static JsonObject request(String encodedPayload) {
         JsonObject source = JsonParser.parseString(encodedPayload).getAsJsonObject();
         JsonObject alert = new JsonObject();
-        alert.addProperty("title", "Autorizar inicio de sesión");
-        alert.addProperty("body", "Solicitud de " + string(source, "application", "Gator"));
+        alert.addProperty("title", string(source, "application", "Gator"));
+        alert.addProperty("body", notificationBody(source));
         JsonObject aps = new JsonObject();
         aps.add("alert", alert);
         aps.addProperty("sound", "default");
@@ -116,5 +116,11 @@ final class ApnsPushSender {
 
     private static String string(JsonObject object, String name, String fallback) {
         return object.has(name) && object.get(name).isJsonPrimitive() ? object.get(name).getAsString() : fallback;
+    }
+
+    static String notificationBody(JsonObject source) {
+        String purpose = string(source, "purpose", "Autorizar acceso");
+        String account = string(source, "account", "").trim();
+        return account.isEmpty() ? purpose : purpose + " · Cuenta " + account;
     }
 }

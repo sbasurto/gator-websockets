@@ -4,8 +4,11 @@ public final class ApnsPushSenderSelfCheck {
     private ApnsPushSenderSelfCheck() {}
 
     public static void run() {
-        assert ApnsPushSender.request("{\"type\":\"login.authorization\",\"application\":\"Gator Mail\"}")
-                .getAsJsonObject("aps").getAsJsonObject("alert").get("body").getAsString().contains("Gator Mail");
+        var alert = ApnsPushSender.request("{\"type\":\"login.authorization\",\"application\":\"Gator Mail\","
+                + "\"purpose\":\"Abrir el correo\",\"account\":\"sbasurto\"}")
+                .getAsJsonObject("aps").getAsJsonObject("alert");
+        assert "Gator Mail".equals(alert.get("title").getAsString());
+        assert "Abrir el correo · Cuenta sbasurto".equals(alert.get("body").getAsString());
         byte[] der = {0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02};
         byte[] raw = ApnsPushSender.jose(der);
         assert raw.length == 64 && raw[31] == 1 && raw[63] == 2;
