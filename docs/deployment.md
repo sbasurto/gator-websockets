@@ -195,6 +195,11 @@ coordinan mediante `pg_mobile_authorization` en `db_gatormail`, con
 reemplazar JAR, configuración o unidad, crear un respaldo fechado en el mismo
 directorio.
 
+El coordinador limita a 15 segundos las lecturas JDBC y habilita TCP keepalive.
+Si el enlace del nodo secundario hacia PostgreSQL queda interrumpido, el ciclo
+abandona la conexión bloqueada y vuelve a conectarse en lugar de continuar
+aceptando WebSockets sin poder entregar sus mensajes.
+
 ## 6. Instalar HAProxy
 
 El nodo primario usa `deploy/haproxy.cfg`; el secundario usa una configuración

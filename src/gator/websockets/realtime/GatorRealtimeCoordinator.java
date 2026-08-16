@@ -51,6 +51,8 @@ public final class GatorRealtimeCoordinator implements AutoCloseable {
         dbProperties.setProperty("password", database.getSecret());
         if("true".equalsIgnoreCase(database.getSSL())) dbProperties.setProperty("ssl", "true");
         dbProperties.setProperty("connectTimeout", "10");
+        dbProperties.setProperty("socketTimeout", "15");
+        dbProperties.setProperty("tcpKeepAlive", "true");
         tenantId = properties.getTenantId();
         applicationId = properties.getApplicationId();
         heartbeatSeconds = properties.getServerHeartbeatSeconds();
