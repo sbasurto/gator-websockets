@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+
+description="Gator WebSocket server node"
+command="/usr/bin/java"
+command_args="-jar /home/gapps/softgator/tomcat-11-production/privlib/bin/gator-websockets.jar"
+command_user="tomcat:tomcat"
+directory="/home/gapps/softgator/tomcat-11-production"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+
+depend() {
+	need net
+	after postgresql keycloak
+}
+
+start_pre() {
+	local port="${RC_SVCNAME##*.}"
+	case "${port}" in
+		''|*[!0-9]*) eerror "Use una instancia con puerto: ${RC_SVCNAME}.12381"; return 1 ;;
+	esac
+	export TOMCAT_GAPPS_EXTRAS="/home/gapps/softgator/tomcat-11-production"
+	export GATOR_WS_PORT="${port}"
+	[ ! -r /etc/gator/gator-websockets.env ] || . /etc/gator/gator-websockets.env
+}
