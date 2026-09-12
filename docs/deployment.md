@@ -145,6 +145,14 @@ Reglas relevantes:
 - `apnsKeyFile` vacío deshabilita APNs sin afectar WebSocket. Si se configura,
   también son obligatorios Team ID, Key ID y bundle ID. `apnsEnvironment`
   acepta `production` (predeterminado) o `sandbox`.
+  Este valor es el primer destino, no una restricción para todos los dispositivos.
+  Solo ante HTTP 400 con razón exacta `BadDeviceToken` se prueba una vez el otro
+  entorno de Apple. Un HTTP 200 conserva el destino por token en una caché LRU
+  de hasta 1024 entradas por proceso; se pierde al reiniciar. No se alterna ante
+  aceptación, timeout, errores de credenciales ni otros rechazos. Los reintentos
+  normales de la cola siguen vigentes; esto no garantiza entrega exactamente una vez.
+  Permite coexistir instalaciones de desarrollo y producción sin cambiar llaves,
+  esquema de base de datos ni volver a instalar Gator Mobile.
 
 Para Android, instalar la cuenta de servicio fuera de Git y crear el archivo
 de entorno leído por systemd:

@@ -17,13 +17,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** Sends APNs alert notifications with Apple's token-based HTTP/2 API. */
 final class ApnsPushSender {
     private static final Base64.Encoder BASE64 = Base64.getUrlEncoder().withoutPadding();
-    private final HttpClient client = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_2).connectTimeout(Duration.ofSeconds(10)).build();
+    private static final URI PRODUCTION = URI.create("https://api.push.apple.com");
+    private static final URI SANDBOX = URI.create("https://api.sandbox.push.apple.com");
+    private final Transport transport;
     private final URI endpoint;
+    private final Map<String, URI> deviceEndpoints = new LinkedHashMap<>(16, 0.75f, true);
     private final String teamId;
     private final String keyId;
     private final String bundleId;
@@ -32,37 +36,96 @@ final class ApnsPushSender {
     private long jwtCreatedAt;
 
     ApnsPushSender(String keyFile, String teamId, String keyId, String bundleId, boolean sandbox) throws Exception {
+        this(loadKey(keyFile), teamId, keyId, bundleId, sandbox, httpTransport());
+    }
+
+    ApnsPushSender(PrivateKey key, String teamId, String keyId, String bundleId,
+            boolean sandbox, Transport transport) {
         this.teamId = teamId;
         this.keyId = keyId;
         this.bundleId = bundleId;
-        endpoint = URI.create(sandbox ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com");
+        endpoint = sandbox ? SANDBOX : PRODUCTION;
+        this.key = key;
+        this.transport = transport;
+    }
+
+    private static PrivateKey loadKey(String keyFile) throws Exception {
         String pem = Files.readString(Path.of(keyFile), StandardCharsets.US_ASCII)
                 .replace("-----BEGIN PRIVATE KEY-----", "")
                 .replace("-----END PRIVATE KEY-----", "").replaceAll("\\s", "");
-        key = KeyFactory.getInstance("EC").generatePrivate(
+        return KeyFactory.getInstance("EC").generatePrivate(
                 new PKCS8EncodedKeySpec(Base64.getDecoder().decode(pem)));
     }
+
+    private static Transport httpTransport() {
+        HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_2)
+                .connectTimeout(Duration.ofSeconds(10)).build();
+        return request -> {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return new Reply(response.statusCode(), response.body());
+        };
+    }
+
+    @FunctionalInterface
+    interface Transport { Reply send(HttpRequest request) throws Exception; }
+
+    record Reply(int status, String body) {}
 
     FcmPushSender.Result send(String token, String payload) {
         try {
             if(!token.matches("[A-Fa-f0-9]{32,256}")) return new FcmPushSender.Result(false, true, "Invalid APNs token");
-            HttpRequest request = HttpRequest.newBuilder(endpoint.resolve("/3/device/" + token))
+            URI selected = endpointFor(token);
+            String body = request(payload).toString();
+            Reply response = deliver(selected, token, body);
+            // Only an explicit token rejection proves that Apple did not accept the alert.
+            // Never try another endpoint after a timeout, credential failure or success.
+            if (badDeviceToken(response)) {
+                selected = selected.equals(PRODUCTION) ? SANDBOX : PRODUCTION;
+                response = deliver(selected, token, body);
+            }
+            if (response.status() == 200) {
+                remember(token, selected);
+                return new FcmPushSender.Result(true, false, null);
+            }
+            String errorBody = response.body() == null ? "" : response.body();
+            return new FcmPushSender.Result(false, permanent(response.status()),
+                    "APNs HTTP " + response.status() + (errorBody.isBlank() ? "" : " " + errorBody));
+        } catch(Exception error) {
+            return new FcmPushSender.Result(false, false, error.getClass().getSimpleName());
+        }
+    }
+
+    private Reply deliver(URI selected, String deviceToken, String body) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(selected.resolve("/3/device/" + deviceToken))
                     .version(HttpClient.Version.HTTP_2).timeout(Duration.ofSeconds(15))
                     .header("authorization", "bearer " + token())
                     .header("apns-topic", bundleId)
                     .header("apns-push-type", "alert")
                     .header("apns-priority", "10")
                     .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(request(payload).toString(), StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                     .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if(response.statusCode() == 200) return new FcmPushSender.Result(true, false, null);
-            String body = response.body() == null ? "" : response.body();
-            return new FcmPushSender.Result(false, permanent(response.statusCode()),
-                    "APNs HTTP " + response.statusCode() + (body.isBlank() ? "" : " " + body));
-        } catch(Exception error) {
-            return new FcmPushSender.Result(false, false, error.getClass().getSimpleName());
+        return transport.send(request);
+    }
+
+    private static boolean badDeviceToken(Reply response) {
+        if (response.status() != 400 || response.body() == null) return false;
+        try {
+            var reason = JsonParser.parseString(response.body()).getAsJsonObject().get("reason");
+            return reason != null && reason.isJsonPrimitive() && reason.getAsJsonPrimitive().isString()
+                    && "BadDeviceToken".equals(reason.getAsString());
+        } catch (RuntimeException invalidResponse) {
+            return false;
         }
+    }
+
+    private synchronized URI endpointFor(String deviceToken) {
+        return deviceEndpoints.getOrDefault(deviceToken, endpoint);
+    }
+
+    private synchronized void remember(String deviceToken, URI selected) {
+        deviceEndpoints.put(deviceToken, selected);
+        if (deviceEndpoints.size() > 1024) deviceEndpoints.remove(deviceEndpoints.keySet().iterator().next());
     }
 
     static JsonObject request(String encodedPayload) {
