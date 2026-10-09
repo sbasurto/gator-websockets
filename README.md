@@ -103,6 +103,10 @@ todos los servidores deben apuntar a la misma base preparada con
 `deploy/realtime.sql`. Consulta la [arquitectura](docs/architecture.md) y el
 [contrato v2](docs/protocol-v2.md).
 
+`bindAddress=127.0.0.1` limita el listener TCP/TLS a loopback. Si se omite o queda
+vacío, conserva la escucha en todas las interfaces. Una dirección inválida o no
+disponible impide iniciar el listener; no recurre a todas las interfaces.
+
 `allowedOrigins` compara orígenes completos de forma exacta. Si queda vacío,
 rechaza conexiones de navegador pero permite clientes sin `Origin`; `*` acepta
 cualquier origen y solo debe utilizarse en desarrollo.
