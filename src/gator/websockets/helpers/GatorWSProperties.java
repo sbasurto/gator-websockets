@@ -20,6 +20,8 @@ import gator.lib.io.files.GappFiles;
 import gator.lib.logs.GappLog;
 import gator.lib.logs.GappLogging;
 import java.io.FileInputStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Properties;
@@ -34,6 +36,7 @@ import java.util.stream.Collectors;
 public class GatorWSProperties {
         private final Properties appProps = new Properties();
         private final int port;
+        private final InetAddress bindAddress;
         private final boolean debug;
         private final boolean ssl;
         private final String dbConfigurationFile;
@@ -78,6 +81,12 @@ public class GatorWSProperties {
                         logger.logIt(gappLog, true);
                 }
                 port = Integer.parseInt(System.getenv().getOrDefault("GATOR_WS_PORT", appProps.getProperty("port")));
+                String address = appProps.getProperty("bindAddress", "").trim();
+                try {
+                        bindAddress = address.isEmpty() ? null : InetAddress.getByName(address);
+                } catch(UnknownHostException invalid) {
+                        throw new IllegalArgumentException("Invalid bindAddress", invalid);
+                }
                 debug = Boolean.parseBoolean(appProps.getProperty("withDebug"));
                 ssl = Boolean.parseBoolean(appProps.getProperty("withSSL"));
                 dbConfigurationFile = appProps.getProperty("gappConfigFile");
@@ -124,6 +133,7 @@ public class GatorWSProperties {
                 logger = new GappLogging();
                 gappLog = new GappLog();
                 port = source.port;
+                bindAddress = source.bindAddress;
                 debug = source.debug;
                 ssl = source.ssl;
                 dbConfigurationFile = source.dbConfigurationFile;
@@ -154,6 +164,9 @@ public class GatorWSProperties {
         }
         public int getPort() {
                 return port;
+        }
+        public InetAddress getBindAddress() {
+                return bindAddress;
         }
         public boolean withDebug() {
                 return debug;

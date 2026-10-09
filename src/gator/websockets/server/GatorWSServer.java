@@ -87,7 +87,7 @@ public class GatorWSServer {
 		        	return sslSocketServer;
 		    	} else {
 		        	if(socketServer == null) {
-					socketServer = new ServerSocket(gatorProps.getPort());
+					socketServer = new ServerSocket(gatorProps.getPort(), 50, gatorProps.getBindAddress());
                                         gappLog.addMessage("Listening in port " + gatorProps.getPort());
 		        	}	                        
 	                        logger.logIt(gappLog, gatorProps.withDebug());
@@ -146,7 +146,7 @@ public class GatorWSServer {
 
                         SSLServerSocketFactory factory = ctx.getServerSocketFactory();
                         
-                        sslSocket = (SSLServerSocket) factory.createServerSocket(port);
+                        sslSocket = (SSLServerSocket) factory.createServerSocket(port, 50, gatorProps.getBindAddress());
 
                         for(String proto: sslSocket.getEnabledProtocols()) {
                                 gappLog.addMessage("Supported protocol: " + proto);

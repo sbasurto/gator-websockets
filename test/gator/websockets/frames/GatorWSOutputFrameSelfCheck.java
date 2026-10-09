@@ -9,6 +9,7 @@ import gator.websockets.realtime.ApnsPushSenderSelfCheck;
 
 public class GatorWSOutputFrameSelfCheck {
         public static void main(String[] args) throws Exception {
+                gator.websockets.server.GatorWSBindSelfCheck.run();
                 GatorWSHandShakeSelfCheck.run();
                 GatorPacketHandlerSelfCheck.run();
                 byte[] medium = new GatorWSOutputFrame(GatorWSFrame.TEXT_FRAME).addData(new byte[32_768]);
